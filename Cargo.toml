@@ -1,0 +1,9 @@
+[package]
+name = "map-generator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { version = "1.0" }
+rand = { version = "0.9" }
+svg = { version = "0.18.0" }

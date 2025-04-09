@@ -10,6 +10,28 @@ use std::{
 use anyhow::Result;
 use svg::{Document, node::element::Path, node::element::path::Data};
 
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct Vector2 {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Vector2 {
+    pub fn new(x: f32, y: f32) -> Self {
+        Vector2 { x, y }
+    }
+
+    pub fn distance(&self, other: &Vector2) -> f32 {
+        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
+    }
+}
+
+impl Display for Vector2 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Point {
     pub col: u32,
@@ -35,6 +57,11 @@ impl Point {
             col: self.col * factor,
             row: self.row * factor,
         }
+    }
+
+    pub fn distance(&self, other: &Point) -> u32 {
+        ((self.col as i32 - other.col as i32).abs() + (self.row as i32 - other.row as i32).abs())
+            as u32
     }
 
     pub fn is_neighbour_of(&self, other: &Point) -> Option<Direction> {
@@ -307,6 +334,18 @@ impl Rect {
         }
     }
 
+    pub fn into_cells(&self) -> Vec<Point> {
+        let mut cells = Vec::new();
+
+        for row in self.origin.row..(self.origin.row + self.height) {
+            for col in self.origin.col..(self.origin.col + self.width) {
+                cells.push(Point { col, row });
+            }
+        }
+
+        cells
+    }
+
     pub fn into_points(&self) -> Vec<Point> {
         let mut points = Vec::new();
 
@@ -450,6 +489,20 @@ impl Room {
             modifier,
             color: RoomColor::default(),
         }
+    }
+
+    pub fn into_cells(&self) -> Vec<Point> {
+        self.rects.iter().fold(Vec::new(), |mut cells, rect| {
+            cells.extend(rect.into_cells());
+            cells
+        })
+    }
+
+    pub fn into_points(&self) -> Vec<Point> {
+        self.rects.iter().fold(Vec::new(), |mut points, rect| {
+            points.extend(rect.into_points());
+            points
+        })
     }
 
     pub fn into_svg(&self) -> Path {

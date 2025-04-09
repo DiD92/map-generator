@@ -3,7 +3,7 @@ use crate::{consants::*, types::*};
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
-use rand::Rng;
+use rand::{Rng, distr};
 
 pub struct MapBuilderConfig {
     // The minimum area of a rectangle to be considered for splitting.
@@ -280,39 +280,196 @@ impl MapBuilder {
             room_groups.push(visited_rooms);
         }
 
-        println!("Room groups: {}", room_groups.len());
-
-        for key in room_link_map.keys() {
-            println!(
-                "{:?}: {:?}",
-                key,
-                room_link_map.get(key).unwrap_or(&HashSet::default())
-            );
-        }
-
         map.rooms.clear();
 
-        for group in room_groups.into_iter() {
-            let color = match rng.random_range(1..6) {
-                1 => RoomColor::Red,
-                2 => RoomColor::Green,
-                3 => RoomColor::Blue,
-                4 => RoomColor::Yellow,
-                5 => RoomColor::Purple,
-                _ => RoomColor::Red,
-            };
-
-            for mut room in group.into_iter() {
-                room.color = color;
-                map.add_room(room);
-            }
-        }
-
         // We need to fill the empty spaces with rooms
+        let rooms = Self::connect_room_groups(room_groups);
+
+        for room in rooms.into_iter() {
+            map.add_room(room);
+        }
 
         // We need to add doors to most rooms
 
         map
+    }
+
+    fn connect_room_groups(room_groups: Vec<HashSet<Room>>) -> Vec<Room> {
+        let group_size_cutoff = (room_groups
+            .iter()
+            .map(|group| group.len() as f32)
+            .sum::<f32>()
+            / room_groups.len() as f32)
+            * 0.5;
+
+        let mut group_map = HashMap::new();
+
+        for (i, group) in room_groups
+            .into_iter()
+            .filter(|group| group.len() as f32 > group_size_cutoff)
+            .enumerate()
+        {
+            group_map.insert(i, group);
+        }
+
+        let mut group_centers = HashMap::new();
+
+        for (i, group) in group_map.iter() {
+            let mut center = Vector2::new(0_f32, 0_f32);
+
+            let mut point_count = 0_u32;
+
+            for room in group.iter() {
+                for rect in room.rects.iter() {
+                    center.x += rect.origin.col as f32;
+                    center.y += rect.origin.row as f32;
+                    point_count += 1;
+                }
+            }
+
+            center.x = center.x / point_count as f32;
+            center.y = center.y / point_count as f32;
+
+            group_centers.insert(*i, center);
+        }
+
+        let mut closer_groups = Vec::new();
+
+        let mut visited_links = HashSet::new();
+
+        for (i, center) in group_centers.iter() {
+            let mut distance = f32::MAX;
+            let mut maybe_cosest_group = None;
+
+            for (j, other_center) in group_centers.iter() {
+                if i == j || visited_links.contains(&(*j, *i)) {
+                    continue;
+                }
+
+                let dist = center.distance(other_center);
+
+                if dist < distance {
+                    distance = dist;
+                    maybe_cosest_group = Some(*j);
+                }
+            }
+
+            if let Some(closest_group) = maybe_cosest_group {
+                closer_groups.push((*i, closest_group, distance));
+
+                visited_links.insert((*i, closest_group));
+                visited_links.insert((closest_group, *i));
+            }
+        }
+
+        let mut cell_set = HashSet::new();
+
+        for (_, group) in group_map.iter() {
+            for room in group.iter() {
+                for rect in room.rects.iter() {
+                    for point in rect.into_cells() {
+                        cell_set.insert(point);
+                    }
+                }
+            }
+        }
+
+        for (group_a, group_b, _) in closer_groups.iter() {
+            let a_points = {
+                let a_rooms = group_map.get(group_b).unwrap();
+
+                a_rooms.iter().fold(Vec::new(), |mut acc, room| {
+                    acc.extend(room.into_cells());
+                    acc
+                })
+            };
+
+            let b_points = {
+                let b_rooms = group_map.get(group_a).unwrap();
+                b_rooms.iter().fold(Vec::new(), |mut acc, room| {
+                    acc.extend(room.into_cells());
+                    acc
+                })
+            };
+
+            let mut min_distance = u32::MAX;
+            let mut selected_a_point = Point::ZERO;
+            let mut selected_b_point = Point::ZERO;
+
+            'outer: for a_point in a_points.iter() {
+                for b_point in b_points.iter() {
+                    let point_distance = a_point.distance(b_point);
+                    if point_distance < min_distance {
+                        min_distance = point_distance;
+                        selected_a_point = *a_point;
+                        selected_b_point = *b_point;
+                    }
+
+                    if min_distance == 0 {
+                        break 'outer;
+                    }
+                }
+            }
+
+            let room = Self::connect_points(selected_a_point, selected_b_point, &cell_set);
+
+            let a_rooms = group_map.get_mut(group_a).unwrap();
+            a_rooms.insert(room);
+        }
+
+        group_map
+            .into_iter()
+            .fold(Vec::new(), |mut acc, (_, mut group)| {
+                for room in group.drain() {
+                    acc.push(room);
+                }
+                acc
+            })
+    }
+
+    fn connect_points(point_a: Point, point_b: Point, occupied_points: &HashSet<Point>) -> Room {
+        let mut visited_cells = HashSet::new();
+        let mut cell_stack = vec![point_a];
+
+        while let Some(cell) = cell_stack.pop() {
+            if !occupied_points.contains(&cell) {
+                visited_cells.insert(cell);
+            }
+
+            if cell.is_neighbour_of(&point_b).is_some() {
+                break;
+            }
+
+            let current_distance = cell.distance(&point_b);
+
+            for neighbour in cell.neighbours() {
+                let distance = neighbour.distance(&point_b);
+                if !visited_cells.contains(&neighbour)
+                    && !occupied_points.contains(&neighbour)
+                    && distance < current_distance
+                {
+                    cell_stack.push(neighbour);
+                }
+            }
+        }
+
+        let mut room = Room::new(
+            visited_cells
+                .into_iter()
+                .map(|cell| {
+                    let rect = Rect {
+                        origin: cell,
+                        width: 1,
+                        height: 1,
+                    };
+
+                    rect
+                })
+                .collect(),
+        );
+
+        room.color = RoomColor::Green;
+        room
     }
 }
 

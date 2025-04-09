@@ -1,6 +1,6 @@
 use crate::{consants::*, types::*};
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use rand::Rng;
@@ -20,17 +20,23 @@ pub struct MapBuilderConfig {
     pub remove_highly_connected_rect_prob: f64,
     // The probability of removing a fully connected rectangle.
     pub remove_fully_connected_rect_prob: f64,
+    // The probability of removing a cell from a rect before creating a room.
+    pub remove_cell_prob: f64,
+    // The probability of merging two rooms into one.
+    pub room_merge_prov: f64,
 }
 
 impl Default for MapBuilderConfig {
     fn default() -> Self {
         MapBuilderConfig {
-            rect_area_cutoff: 6,
+            rect_area_cutoff: 2,
             height_factor_cutoff: 1.8,
-            width_factor_cutoff: 2.3,
-            horizontal_split_prob: 0.5,
+            width_factor_cutoff: 2.5,
+            horizontal_split_prob: 0.6,
             remove_highly_connected_rect_prob: 0.4,
             remove_fully_connected_rect_prob: 0.5,
+            remove_cell_prob: 0.7,
+            room_merge_prov: 0.4,
         }
     }
 }
@@ -52,8 +58,6 @@ impl MapBuilder {
     }
 
     pub fn build(&self, config: &MapBuilderConfig) -> Map {
-        let mut map = Map::new();
-
         let initial_rect = Rect {
             origin: Point::ZERO,
             width: self.cols,
@@ -138,12 +142,175 @@ impl MapBuilder {
             }
         }
 
-        // Now we remove all orphaned rects
+        // We remove the rects that have remained orphaned
+        let mut orphaned_rects = Vec::new();
+        for rect in rects_to_keep.iter() {
+            let mut neighbour_count = 0;
+            for other_rect in rects_to_keep.iter() {
+                if rect == other_rect {
+                    continue;
+                }
 
-        for rect in rects_to_keep {
-            let room = Room::new(vec![rect]);
-            map.add_room(room);
+                if rect.is_neighbour_of(other_rect) {
+                    neighbour_count += 1;
+                }
+            }
+
+            if neighbour_count == 0 {
+                orphaned_rects.push(*rect);
+            }
         }
+
+        for rect in orphaned_rects.iter() {
+            rects_to_keep.retain(|&r| r != *rect);
+        }
+
+        let mut intial_rooms = Vec::new();
+
+        // We randomly remove some cells from the rects of a certain size
+        for rect in rects_to_keep {
+            let room =
+                if rect.width > 1 && rect.height > 1 && rng.random_bool(config.remove_cell_prob) {
+                    let points = rect.into_points();
+                    let idx = rng.random_range(0..points.len());
+
+                    let rects = rect.puncture(points[idx]);
+
+                    Room::new(rects)
+                } else {
+                    Room::new(vec![rect])
+                };
+
+            intial_rooms.push(room);
+        }
+
+        let mut map = Map::new();
+
+        let mut rooms_to_merge = intial_rooms.clone().into_iter().collect::<HashSet<_>>();
+
+        let mut merged_rooms = HashSet::new();
+
+        let mut initial_rooms_2 = Vec::new();
+
+        // We randomly merge some rooms
+        for room in intial_rooms.into_iter() {
+            if merged_rooms.contains(&room) {
+                continue;
+            }
+
+            if rng.random_bool(config.room_merge_prov) {
+                let mut maybe_room_to_merge = None;
+
+                for maybe_neighbour in rooms_to_merge.iter() {
+                    if room.is_neighbour_of(maybe_neighbour) {
+                        maybe_room_to_merge = Some(maybe_neighbour.clone());
+                        break;
+                    }
+                }
+
+                if let Some(room_to_merge) = maybe_room_to_merge {
+                    rooms_to_merge.remove(&room_to_merge);
+                    rooms_to_merge.remove(&room);
+
+                    merged_rooms.insert(room.clone());
+                    merged_rooms.insert(room_to_merge.clone());
+
+                    let merged_room = room.merged_with(room_to_merge);
+                    //map.add_room(merged_room.clone());
+                    initial_rooms_2.push(merged_room);
+                }
+            } else {
+                rooms_to_merge.remove(&room);
+                initial_rooms_2.push(room);
+                //map.add_room(room);
+            }
+        }
+
+        let mut room_link_map = HashMap::<Room, HashSet<Room>>::new();
+        let neighour_set = initial_rooms_2.clone().into_iter().collect::<HashSet<_>>();
+
+        for room in initial_rooms_2.iter() {
+            for maybe_neighbour in neighour_set.iter() {
+                if room == maybe_neighbour {
+                    continue;
+                }
+
+                if room.is_neighbour_of(maybe_neighbour) {
+                    if let Some(neighbours) = room_link_map.get_mut(room) {
+                        neighbours.insert(maybe_neighbour.clone());
+                    } else {
+                        let mut neighbours = HashSet::new();
+                        neighbours.insert(maybe_neighbour.clone());
+                        room_link_map.insert(room.clone(), neighbours);
+                    }
+                }
+            }
+
+            map.add_room(room.clone());
+        }
+
+        // We remove the rooms that are not connected to any other room
+        map.rooms = map
+            .rooms
+            .into_iter()
+            .filter(|room| room_link_map.contains_key(room))
+            .collect();
+
+        let mut room_groups = Vec::new();
+        let mut map_rooms = map.rooms.clone().into_iter().collect::<HashSet<_>>();
+
+        while !map_rooms.is_empty() {
+            let initial_room = map_rooms.iter().next().unwrap().clone();
+            let mut rooms_to_visit = vec![initial_room];
+            let mut visited_rooms = HashSet::new();
+
+            while let Some(room) = rooms_to_visit.pop() {
+                visited_rooms.insert(room.clone());
+                map_rooms.remove(&room);
+
+                if let Some(neighbours) = room_link_map.get(&room) {
+                    for neighbour in neighbours.iter() {
+                        if !visited_rooms.contains(neighbour) {
+                            rooms_to_visit.push(neighbour.clone());
+                        }
+                    }
+                }
+            }
+
+            room_groups.push(visited_rooms);
+        }
+
+        println!("Room groups: {}", room_groups.len());
+
+        for key in room_link_map.keys() {
+            println!(
+                "{:?}: {:?}",
+                key,
+                room_link_map.get(key).unwrap_or(&HashSet::default())
+            );
+        }
+
+        map.rooms.clear();
+
+        for group in room_groups.into_iter() {
+            let color = match rng.random_range(1..6) {
+                1 => RoomColor::Red,
+                2 => RoomColor::Green,
+                3 => RoomColor::Blue,
+                4 => RoomColor::Yellow,
+                5 => RoomColor::Purple,
+                _ => RoomColor::Red,
+            };
+
+            for mut room in group.into_iter() {
+                room.color = color;
+                map.add_room(room);
+            }
+        }
+
+        // We need to fill the empty spaces with rooms
+
+        // We need to add doors to most rooms
 
         map
     }

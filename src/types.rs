@@ -110,19 +110,19 @@ impl Edge {
             && other.to.col == self.to.col
         {
             // Check for vertical intersection
-            let mut from_range = self.from.row..=self.to.row;
+            let from_range = self.from.row..=self.to.row;
             let other_range = other.from.row..=other.to.row;
 
-            from_range.any(|row| other_range.contains(&row))
+            from_range.filter(|row| other_range.contains(&row)).count() > 1
         } else if self.from.row == self.to.row
             && other.from.row == self.from.row
             && other.to.row == self.to.row
         {
             // Check for horizontal intersection
-            let mut from_range = self.from.col..=self.to.col;
+            let from_range = self.from.col..=self.to.col;
             let other_range = other.from.col..=other.to.col;
 
-            from_range.any(|col| other_range.contains(&col))
+            from_range.filter(|col| other_range.contains(&col)).count() > 1
         } else {
             false
         }
@@ -164,7 +164,7 @@ pub enum SplitAxis {
     Vertical,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rect {
     pub origin: Point,
     pub width: u32,
@@ -223,8 +223,12 @@ impl Rect {
 
     pub fn is_neighbour_of(&self, other: &Rect) -> bool {
         for direction in DIRECTIONS.iter() {
-            let self_edge = self.get_edge(*direction);
-            let other_edge = other.get_edge(*direction);
+            let (self_edge, other_edge) = match direction {
+                Direction::North => (self.get_edge(*direction), other.get_edge(Direction::South)),
+                Direction::South => (self.get_edge(*direction), other.get_edge(Direction::North)),
+                Direction::East => (self.get_edge(*direction), other.get_edge(Direction::West)),
+                Direction::West => (self.get_edge(*direction), other.get_edge(Direction::East)),
+            };
 
             if self_edge.intersects_with(&other_edge) {
                 return true;
@@ -232,6 +236,75 @@ impl Rect {
         }
 
         false
+    }
+
+    pub fn puncture(&self, point: Point) -> Vec<Rect> {
+        if point.col >= self.origin.col
+            && point.col < self.origin.col + self.width
+            && point.row >= self.origin.row
+            && point.row < self.origin.row + self.height
+        {
+            let mut rects = Vec::new();
+
+            for i in self.origin.col..(self.origin.col + self.width) {
+                if point.col == i {
+                    if point.row == self.origin.row {
+                        let new_rect = Rect {
+                            origin: Point {
+                                col: i,
+                                row: self.origin.row + 1,
+                            },
+                            width: 1,
+                            height: self.height - 1,
+                        };
+
+                        if new_rect.height > 0 {
+                            rects.push(new_rect);
+                        }
+                    } else if point.row == self.origin.row + self.height {
+                        rects.push(Rect {
+                            origin: Point {
+                                col: i,
+                                row: self.origin.row,
+                            },
+                            width: 1,
+                            height: self.height - 1,
+                        });
+                    } else {
+                        rects.push(Rect {
+                            origin: Point {
+                                col: i,
+                                row: self.origin.row,
+                            },
+                            width: 1,
+                            height: point.row - self.origin.row,
+                        });
+
+                        rects.push(Rect {
+                            origin: Point {
+                                col: i,
+                                row: point.row + 1,
+                            },
+                            width: 1,
+                            height: self.origin.row + self.height - point.row - 1,
+                        });
+                    }
+                } else {
+                    rects.push(Rect {
+                        origin: Point {
+                            col: i,
+                            row: self.origin.row,
+                        },
+                        width: 1,
+                        height: self.height,
+                    });
+                }
+            }
+
+            rects
+        } else {
+            return vec![*self];
+        }
     }
 
     pub fn into_points(&self) -> Vec<Point> {
@@ -324,14 +397,59 @@ pub enum Direction {
     West,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum RoomColor {
+    #[default]
+    Purple,
+    Red,
+    Green,
+    Blue,
+    Yellow,
+}
+
+impl RoomColor {
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            RoomColor::Purple => "purple",
+            RoomColor::Red => "red",
+            RoomColor::Green => "green",
+            RoomColor::Blue => "blue",
+            RoomColor::Yellow => "yellow",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub enum RoomModifier {
+    #[default]
+    None,
+    Secret,
+    Save,
+    Item,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Room {
     pub rects: Vec<Rect>,
+    pub modifier: RoomModifier,
+    pub color: RoomColor,
 }
 
 impl Room {
     pub fn new(rects: Vec<Rect>) -> Self {
-        Self { rects }
+        Self {
+            rects,
+            modifier: RoomModifier::default(),
+            color: RoomColor::default(),
+        }
+    }
+
+    pub fn new_with_modifier(rects: Vec<Rect>, modifier: RoomModifier) -> Self {
+        Self {
+            rects,
+            modifier,
+            color: RoomColor::default(),
+        }
     }
 
     pub fn into_svg(&self) -> Path {
@@ -379,12 +497,35 @@ impl Room {
         data = data.close();
 
         let path = Path::new()
-            .set("fill", "purple")
+            .set("fill", self.color.to_string())
             .set("stroke", "white")
             .set("stroke-width", MAP_STROKE_WIDTH)
             .set("d", data);
 
         path
+    }
+
+    pub fn is_neighbour_of(&self, other: &Room) -> bool {
+        if self == other {
+            return false;
+        }
+
+        for rect in self.rects.iter() {
+            for other_rect in other.rects.iter() {
+                if rect.is_neighbour_of(other_rect) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    pub fn merged_with(self, other: Room) -> Self {
+        let mut merged_rects = self.rects.clone();
+        merged_rects.extend(other.rects);
+
+        Room::new(merged_rects)
     }
 }
 
@@ -514,5 +655,69 @@ mod test {
 
         let split_result = rect1.try_split_at(SplitAxis::Vertical, 0);
         assert!(split_result.is_err());
+    }
+
+    #[test]
+    fn test_edge_intersects_with() {
+        let edge_1 = Edge {
+            from: Point { col: 3, row: 2 },
+            to: Point { col: 4, row: 2 },
+        };
+
+        let edge_2 = Edge {
+            from: Point { col: 2, row: 2 },
+            to: Point { col: 3, row: 2 },
+        };
+
+        assert!(edge_1.intersects_with(&edge_2));
+    }
+
+    #[test]
+    fn test_rect_is_neighour_of() {
+        let rect_1 = Rect {
+            origin: Point { col: 3, row: 1 },
+            width: 2,
+            height: 1,
+        };
+
+        let rect_2 = Rect {
+            origin: Point { col: 2, row: 2 },
+            width: 2,
+            height: 1,
+        };
+
+        assert!(rect_1.is_neighbour_of(&rect_2));
+    }
+
+    #[test]
+    fn test_room_is_neighbour_of() {
+        let room_1 = Room {
+            rects: vec![
+                Rect {
+                    origin: Point { col: 3, row: 1 },
+                    width: 2,
+                    height: 1,
+                },
+                Rect {
+                    origin: Point { col: 4, row: 0 },
+                    width: 1,
+                    height: 1,
+                },
+            ],
+            modifier: RoomModifier::None,
+            color: RoomColor::Purple,
+        };
+
+        let room_2 = Room {
+            rects: vec![Rect {
+                origin: Point { col: 2, row: 2 },
+                width: 2,
+                height: 1,
+            }],
+            modifier: RoomModifier::None,
+            color: RoomColor::Purple,
+        };
+
+        assert!(room_1.is_neighbour_of(&room_2));
     }
 }

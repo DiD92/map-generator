@@ -1,13 +1,13 @@
-mod algo;
-mod consants;
+mod algos;
+mod constants;
 mod types;
 
 fn main() {
-    let columns: u32 = 48;
-    let rows = 27;
+    let columns: u32 = 30;
+    let rows = 20;
 
-    let builder = algo::MapBuilder::new(columns, rows).unwrap();
-    let config = algo::MapBuilderConfig::default();
+    let builder = algos::MapBuilder::new(columns, rows).unwrap();
+    let config = algos::MapBuilderConfig::default();
     let map = builder.build(&config);
     println!(
         "Built map with {} rooms and {} doors",

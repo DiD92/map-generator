@@ -1,15 +1,20 @@
-use crate::algos::PolygonBuilder;
-use crate::constants::{DIRECTIONS, MAP_SIZE_MARGIN, MAP_STROKE_WIDTH, RECT_SIZE_MULTIPLIER};
+use crate::{
+    algos::PolygonBuilder,
+    constants::{DIRECTIONS, MAP_SIZE_MARGIN, MAP_STROKE_WIDTH, RECT_SIZE_MULTIPLIER},
+};
 
-use std::collections::HashMap;
-use std::hash::Hash;
 use std::{
+    collections::HashMap,
     collections::HashSet,
     fmt::{Display, Formatter},
+    hash::Hash,
 };
 
 use anyhow::Result;
-use svg::{Document, node::element::Path, node::element::path::Data};
+use svg::{
+    Document,
+    node::element::{Path, path::Data},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Vector2 {
@@ -306,7 +311,7 @@ impl Rect {
         false
     }
 
-    pub fn into_cells(&self) -> Vec<Cell> {
+    pub fn get_cells(&self) -> Vec<Cell> {
         let mut cells = Vec::new();
 
         for row in self.origin.row..(self.origin.row + self.height) {
@@ -346,17 +351,19 @@ impl Rect {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DoorModifier {
-    None,
+    Open,
     Secret,
     Locked,
+    None,
 }
 
 impl DoorModifier {
     pub fn color(&self) -> &'static str {
         match self {
+            DoorModifier::Open => "purple",
+            DoorModifier::Secret => "blue",
+            DoorModifier::Locked => "red",
             DoorModifier::None => "purple",
-            DoorModifier::Secret => "red",
-            DoorModifier::Locked => "blue",
         }
     }
 }
@@ -373,11 +380,11 @@ impl Door {
         Door {
             from,
             to,
-            modifier: DoorModifier::None,
+            modifier: DoorModifier::Open,
         }
     }
 
-    pub fn into_svg(&self) -> Path {
+    pub fn draw(&self) -> Path {
         let mut data = Data::new();
 
         let from = self
@@ -389,14 +396,22 @@ impl Door {
             .stretched_by(RECT_SIZE_MULTIPLIER)
             .offset_by(MAP_SIZE_MARGIN / 2);
 
+        let line_lenght_multiplier = match self.modifier {
+            DoorModifier::Open => 3,
+            DoorModifier::Secret => 4,
+            DoorModifier::Locked => 3,
+            DoorModifier::None => 2,
+        };
+
         if from.col != to.col {
             // Veritical door
 
             if from.row == to.row {
                 let x = if from.col > to.col { from.col } else { to.col };
 
-                let from_y = from.row + MAP_STROKE_WIDTH * 3;
-                let to_y = from.row + RECT_SIZE_MULTIPLIER - MAP_STROKE_WIDTH * 3;
+                let from_y = from.row + MAP_STROKE_WIDTH * line_lenght_multiplier;
+                let to_y =
+                    from.row + RECT_SIZE_MULTIPLIER - (MAP_STROKE_WIDTH * line_lenght_multiplier);
 
                 data = data.move_to::<(u32, u32)>((x, from_y));
                 data = data.line_to::<(u32, u32)>((x, to_y));
@@ -408,8 +423,9 @@ impl Door {
                 // Horizontal door
                 let y = if from.row > to.row { from.row } else { to.row };
 
-                let from_x = from.col + MAP_STROKE_WIDTH * 3;
-                let to_x = from.col + RECT_SIZE_MULTIPLIER - MAP_STROKE_WIDTH * 3;
+                let from_x = from.col + MAP_STROKE_WIDTH * line_lenght_multiplier;
+                let to_x =
+                    from.col + RECT_SIZE_MULTIPLIER - (MAP_STROKE_WIDTH * line_lenght_multiplier);
 
                 data = data.move_to::<(u32, u32)>((from_x, y));
                 data = data.line_to::<(u32, u32)>((to_x, y));
@@ -447,28 +463,6 @@ impl Direction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
-pub enum RoomColor {
-    #[default]
-    Purple,
-    Red,
-    Green,
-    Blue,
-    Yellow,
-}
-
-impl RoomColor {
-    pub fn to_string(&self) -> &'static str {
-        match self {
-            RoomColor::Purple => "purple",
-            RoomColor::Red => "red",
-            RoomColor::Green => "green",
-            RoomColor::Blue => "blue",
-            RoomColor::Yellow => "yellow",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum RoomModifier {
     #[default]
     None,
@@ -476,6 +470,18 @@ pub enum RoomModifier {
     Secret,
     Save,
     Item,
+}
+
+impl RoomModifier {
+    pub fn color(&self) -> &'static str {
+        match self {
+            RoomModifier::None => "purple",
+            RoomModifier::Connector => "purple",
+            RoomModifier::Secret => "purple",
+            RoomModifier::Save => "purple",
+            RoomModifier::Item => "purple",
+        }
+    }
 }
 
 pub type RoomTable = HashMap<RoomId, Room>;
@@ -487,25 +493,23 @@ pub type RoomId = usize;
 pub struct Room {
     pub cells: Vec<Cell>,
     pub modifier: RoomModifier,
-    pub color: RoomColor,
 }
 
 impl Room {
     pub fn new_from_rect(rect: Rect) -> Self {
         Self {
-            cells: rect.into_cells(),
+            cells: rect.get_cells(),
             modifier: RoomModifier::default(),
-            color: RoomColor::default(),
         }
     }
 
-    pub fn into_svg(&self) -> Path {
+    pub fn draw(&self) -> Path {
         let (valid_vertices, valid_edges) = PolygonBuilder::build_for(self);
 
         let mut vertices_to_visit = valid_vertices.clone();
         let mut vertex_path = Vec::with_capacity(valid_edges.len());
 
-        let mut vertex_stack = vec![vertices_to_visit.iter().next().unwrap().clone()];
+        let mut vertex_stack = vec![*vertices_to_visit.iter().next().unwrap()];
 
         while let Some(vertex) = vertex_stack.pop() {
             vertices_to_visit.remove(&vertex);
@@ -566,7 +570,7 @@ impl Room {
         data = data.close();
 
         Path::new()
-            .set("fill", self.color.to_string())
+            .set("fill", self.modifier.color())
             .set("stroke", "white")
             .set("stroke-width", MAP_STROKE_WIDTH)
             .set("d", data)
@@ -598,7 +602,6 @@ impl Room {
         Room {
             cells: merged_cells.into_iter().collect(),
             modifier: self.modifier,
-            color: self.color,
         }
     }
 }
@@ -610,7 +613,7 @@ pub struct Map {
 }
 
 impl Map {
-    pub fn into_svg(&self, width: u32, height: u32) -> Document {
+    pub fn draw(&self, width: u32, height: u32) -> Document {
         let mut document = Document::new()
             .set("width", (width * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN)
             .set("height", (height * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN)
@@ -618,12 +621,12 @@ impl Map {
             .set("stroke-width", "1");
 
         for room in self.rooms.iter() {
-            let rect = room.into_svg();
+            let rect = room.draw();
             document = document.add(rect);
         }
 
         for door in self.doors.iter() {
-            let door_svg = door.into_svg();
+            let door_svg = door.draw();
             document = document.add(door_svg);
         }
 
@@ -768,12 +771,11 @@ mod test {
 
         let room_1 = Room {
             cells: rect_1_1
-                .into_cells()
+                .get_cells()
                 .into_iter()
-                .chain(rect_1_2.into_cells())
+                .chain(rect_1_2.get_cells())
                 .collect(),
             modifier: RoomModifier::None,
-            color: RoomColor::Purple,
         };
 
         let rect_2 = Rect {
@@ -783,9 +785,8 @@ mod test {
         };
 
         let room_2 = Room {
-            cells: rect_2.into_cells(),
+            cells: rect_2.get_cells(),
             modifier: RoomModifier::None,
-            color: RoomColor::Purple,
         };
 
         assert!(room_1.is_neighbour_of(&room_2).is_some());

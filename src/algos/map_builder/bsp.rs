@@ -3,8 +3,6 @@ use crate::{
     types::{Cell, Rect, SplitAxis},
 };
 
-use std::{collections::HashSet, sync::Mutex};
-
 use rand::Rng;
 use rayon::prelude::*;
 

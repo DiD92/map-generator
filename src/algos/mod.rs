@@ -46,7 +46,7 @@ impl MapBuilder {
     }
 
     pub fn build(&self, config: &MapBuilderConfig) -> Map {
-        let now = std::time::SystemTime::now();
+        let build_start = std::time::SystemTime::now();
 
         let rects = bsp::BinarySpacePartitioning::generate_and_trim_partitions(
             self.cols,
@@ -54,54 +54,20 @@ impl MapBuilder {
             bsp::BinarySpacePartitioningConfig::default(),
         );
 
-        let partition_time = std::time::SystemTime::now();
-        println!(
-            "Partitions generated and trimmed in {:?}ms",
-            partition_time.duration_since(now).unwrap().as_millis()
-        );
-
         let (rooms, neighbours) = Self::generate_initial_rooms(rects);
-
-        let initial_rooms_time = std::time::SystemTime::now();
-        println!(
-            "Initial rooms generated in {:?}ms",
-            initial_rooms_time
-                .duration_since(partition_time)
-                .unwrap()
-                .as_millis()
-        );
 
         let (mut rooms, mut neighbours) = Self::merge_random_rooms(rooms, neighbours, config);
 
-        let merge_time = std::time::SystemTime::now();
-        println!(
-            "Rooms merged in {:?}ms",
-            merge_time
-                .duration_since(initial_rooms_time)
-                .unwrap()
-                .as_millis()
-        );
-
         Self::reconnect_room_groups(&mut rooms, &mut neighbours, config);
-
-        let reconnect_time = std::time::SystemTime::now();
-        println!(
-            "Rooms reconnected in {:?}ms",
-            reconnect_time
-                .duration_since(merge_time)
-                .unwrap()
-                .as_millis()
-        );
 
         let (rooms, doors) = Self::add_doors_to_rooms(rooms, neighbours, config);
 
-        let add_doors_time = std::time::SystemTime::now();
+        let build_end = std::time::SystemTime::now();
         println!(
-            "Doors added in {:?}ms",
-            add_doors_time
-                .duration_since(reconnect_time)
-                .unwrap()
-                .as_millis()
+            "Built map with {} rooms and {} doors in {:?}ms",
+            rooms.len(),
+            doors.len(),
+            build_end.duration_since(build_start).unwrap().as_millis()
         );
 
         Map { rooms, doors }
@@ -433,14 +399,16 @@ impl MapBuilder {
 
                 let mut cell_map = cell_map_mutex.lock().unwrap();
 
-                let room = Self::connect_cells(selected_cell_a, selected_cell_b, &cell_map);
-                if room.cells.len() > 0 {
-                    // If we managed to connect the two points we store the new room
-                    let new_room_id =
-                        next_room_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let rooms = Self::connect_cells(selected_cell_a, selected_cell_b, &cell_map);
+                for room in rooms {
+                    if room.cells.len() > 0 {
+                        // If we managed to connect the two points we store the new room
+                        let new_room_id =
+                            next_room_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-                    cell_map.extend(room.cells.iter().copied().map(|cell| (cell, new_room_id)));
-                    new_rooms.lock().unwrap().push((new_room_id, room));
+                        cell_map.extend(room.cells.iter().copied().map(|cell| (cell, new_room_id)));
+                        new_rooms.lock().unwrap().push((new_room_id, room));
+                    }
                 }
             });
 
@@ -480,7 +448,7 @@ impl MapBuilder {
         point_a: Cell,
         point_b: Cell,
         occupied_points: &HashMap<Cell, RoomId>,
-    ) -> Room {
+    ) -> Vec<Room> {
         let mut visited_cells = HashSet::new();
         let mut cell_stack = vec![point_a];
 
@@ -506,11 +474,45 @@ impl MapBuilder {
             }
         }
 
-        Room {
-            cells: visited_cells.drain().collect(),
-            modifier: RoomModifier::Connector,
-            color: RoomColor::Purple,
+        let mut cell_groups = Vec::new();
+
+        let mut cells_to_visit = visited_cells.clone();
+
+        while !cells_to_visit.is_empty() {
+            let mut cell_stack = vec![cells_to_visit.iter().next().unwrap().clone()];
+
+            let mut cell_group = Vec::new();
+
+            while let Some(cell) = cell_stack.pop() {
+                if cells_to_visit.remove(&cell) {
+                    cell_group.push(cell);
+                }
+
+                for neighbour in cells_to_visit.iter() {
+                    if cell.is_neighbour_of(neighbour).is_some()
+                        && cells_to_visit.contains(&neighbour)
+                    {
+                        cell_stack.push(*neighbour);
+                    }
+                }
+            }
+
+            cell_groups.push(cell_group);
         }
+
+        cell_groups
+            .into_iter()
+            .enumerate()
+            .map(|(i, cells)| Room {
+                cells,
+                modifier: RoomModifier::Connector,
+                color: if i == 0 {
+                    RoomColor::Blue
+                } else {
+                    RoomColor::Yellow
+                },
+            })
+            .collect::<Vec<_>>()
     }
 
     fn merge_repeated_simple_rooms(
@@ -663,9 +665,6 @@ impl MapBuilder {
                 }
             }*/
         }
-
-        println!("Visited rooms: {}", visited_rooms.len());
-        println!("Total rooms: {}", rooms.len());
 
         (rooms.into_iter().map(|(_, room)| room).collect(), doors)
     }

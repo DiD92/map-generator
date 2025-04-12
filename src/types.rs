@@ -500,31 +500,53 @@ impl Room {
     }
 
     pub fn into_svg(&self) -> Path {
-        let (valid_points, valid_edges) = PolygonBuilder::build_for(self);
+        let (valid_vertices, valid_edges) = PolygonBuilder::build_for(self);
 
-        let mut points_to_visit = valid_points.clone().into_iter().collect::<Vec<_>>();
-        let mut point_path = Vec::with_capacity(valid_edges.len());
-        let mut visited_set = HashSet::new();
+        let mut vertices_to_visit = valid_vertices.clone();
+        let mut vertex_path = Vec::with_capacity(valid_edges.len());
 
-        while let Some(point) = points_to_visit.pop() {
-            if visited_set.contains(&point) {
-                continue;
-            }
+        let mut vertex_stack = vec![vertices_to_visit.iter().next().unwrap().clone()];
 
-            visited_set.insert(point);
+        while let Some(vertex) = vertex_stack.pop() {
+            vertices_to_visit.remove(&vertex);
 
-            point_path.push(point);
+            vertex_path.push(vertex);
 
-            for neighbour in point.neighbours() {
-                let edge = Edge::new(point, neighbour);
-                if valid_edges.contains(&edge) && !visited_set.contains(&neighbour) {
-                    points_to_visit.push(neighbour);
-                    break;
+            for other_vertex in vertices_to_visit.iter() {
+                if vertex.distance(other_vertex) == 1 {
+                    let edge = Edge::new(vertex, *other_vertex);
+                    if valid_edges.contains(&edge) {
+                        vertex_stack.push(*other_vertex);
+                        break;
+                    }
                 }
             }
         }
 
-        point_path = point_path
+        if vertex_path.len() % 2 != 0 {
+            println!(
+                "Vertex path is not even {} {}!",
+                valid_vertices.len(),
+                valid_edges.len()
+            );
+            for vertex in valid_vertices.iter() {
+                print!("{}, ", vertex);
+            }
+            println!();
+            for edge in valid_edges.iter() {
+                print!("{}, ", edge);
+            }
+            println!();
+            println!("{:?}", self.modifier);
+            for cell in self.cells.iter() {
+                print!("{}, ", cell);
+            }
+            println!();
+        }
+
+        //println!("Vertex path: {:?}", vertex_path.len() % 2);
+
+        vertex_path = vertex_path
             .into_iter()
             .map(|point| {
                 point
@@ -533,15 +555,13 @@ impl Room {
             })
             .collect();
 
-        let maybe_first_point = point_path.pop();
+        let first_point = vertex_path.pop().unwrap();
         let mut data = Data::new();
-
-        if let Some(first_point) = maybe_first_point {
-            data = data.move_to::<(u32, u32)>(first_point.into());
-            for point in point_path.into_iter() {
-                data = data.line_to::<(u32, u32)>(point.into());
-            }
+        data = data.move_to::<(u32, u32)>(first_point.into());
+        for point in vertex_path.into_iter() {
+            data = data.line_to::<(u32, u32)>(point.into());
         }
+        data = data.line_to::<(u32, u32)>(first_point.into());
 
         data = data.close();
 
@@ -704,7 +724,7 @@ mod test {
     #[test]
     fn test_edge_intersects_with() {
         let edge_1 = Edge {
-            from: Cell { col: 3, row: 2 },
+            from: Cell { col: 2, row: 2 },
             to: Cell { col: 4, row: 2 },
         };
 

@@ -11,13 +11,13 @@ impl MapBuilder {
     ) {
         let mut rng = rand::rng();
 
-        for room in rooms.values_mut() {
+        /*for room in rooms.values_mut() {
             match rng.random_range(0..100_u32) {
                 0 => room.modifier = RoomModifier::Save,
                 1..=5 => room.modifier = RoomModifier::Item,
                 6..=10 => room.modifier = RoomModifier::Secret,
                 _ => room.modifier = RoomModifier::None,
             }
-        }
+        }*/
     }
 }

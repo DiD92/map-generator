@@ -56,7 +56,7 @@ impl PolygonBuilder {
 
 #[cfg(test)]
 mod test {
-    use crate::types::Rect;
+    use crate::types::{Rect, RectModifier};
 
     use super::*;
 

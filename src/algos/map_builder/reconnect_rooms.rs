@@ -34,7 +34,7 @@ impl MapBuilder {
 
             if room_groups.len() > 1 {
                 // If there is more than one group, we need to connect them together
-                Self::connect_room_groups(room_groups, rooms, neighbour_table);
+                Self::connect_room_groups(room_groups, rooms, neighbour_table, config);
 
                 room_groups = Self::generate_room_groups(rooms, neighbour_table);
             } else {
@@ -95,6 +95,7 @@ impl MapBuilder {
         room_groups: HashMap<usize, HashSet<RoomId>>,
         rooms: &mut RoomTable,
         neighbour_table: &mut NeighbourTable,
+        config: &MapBuilderConfig,
     ) {
         let group_count = room_groups.len() as f32;
         let group_size_cutoff = (room_groups
@@ -160,9 +161,14 @@ impl MapBuilder {
         let mut closer_groups = Vec::new();
         let mut visited_links = HashSet::new();
 
+        let mut rng = rand::rng();
+
         for (group_id, center) in group_centers.iter() {
             let mut min_distance = f32::MAX;
             let mut maybe_closest_group_id = None;
+            let mut maybe_second_closest_group_id = None;
+
+            let should_multi_connect = rng.random_bool(config.group_loop_connection_chance);
 
             for (other_group_id, other_center) in group_centers.iter() {
                 if group_id == other_group_id
@@ -174,16 +180,27 @@ impl MapBuilder {
                 let center_distance = center.distance(other_center);
 
                 if center_distance < min_distance {
+                    if should_multi_connect {
+                        maybe_second_closest_group_id = maybe_closest_group_id;
+                    }
+
                     min_distance = center_distance;
                     maybe_closest_group_id = Some(*other_group_id);
                 }
             }
 
             if let Some(closest_group_id) = maybe_closest_group_id {
-                closer_groups.push((*group_id, closest_group_id, min_distance));
+                closer_groups.push((*group_id, closest_group_id));
 
                 visited_links.insert((*group_id, closest_group_id));
                 visited_links.insert((closest_group_id, *group_id));
+            }
+
+            if let Some(second_closest_group_id) = maybe_second_closest_group_id {
+                closer_groups.push((*group_id, second_closest_group_id));
+
+                visited_links.insert((*group_id, second_closest_group_id));
+                visited_links.insert((second_closest_group_id, *group_id));
             }
         }
 
@@ -200,7 +217,7 @@ impl MapBuilder {
 
         closer_groups
             .into_par_iter()
-            .for_each(|(group_a, group_b, _distance)| {
+            .for_each(|(group_a, group_b)| {
                 let cells_a = {
                     let rooms_a = room_groups.get(group_a).unwrap();
 

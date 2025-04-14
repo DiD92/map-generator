@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = { version = "1.0" }
+clap = { version = "4.0", features = ["derive"]}
 rand = { version = "0.9" }
 rayon = { version = "1.10" }
 svg = { version = "0.18.0" }
@@ -12,3 +13,4 @@ svg = { version = "0.18.0" }
 [profile.release]
 opt-level = 3
 lto = true
+codegen-units = 1

@@ -234,10 +234,40 @@ pub enum SplitAxis {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RectModifier {
+    Standard,
+    PreferHorizontal,
+    PreferVertical,
+    Chaotic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RectRegion {
+    pub rect: Rect,
+    pub modifier: RectModifier,
+}
+
+impl Display for RectRegion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} - {:?}", self.rect, self.modifier)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rect {
     pub origin: Cell,
     pub width: u32,
     pub height: u32,
+}
+
+impl Display for Rect {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "({},{}) - [{}x{}]",
+            self.origin.col, self.origin.row, self.width, self.height
+        )
+    }
 }
 
 impl Rect {
@@ -472,18 +502,6 @@ pub enum RoomModifier {
     Item,
 }
 
-impl RoomModifier {
-    pub fn color(&self) -> &'static str {
-        match self {
-            RoomModifier::None => "purple",
-            RoomModifier::Connector => "purple",
-            RoomModifier::Secret => "purple",
-            RoomModifier::Save => "purple",
-            RoomModifier::Item => "purple",
-        }
-    }
-}
-
 pub type RoomTable = HashMap<RoomId, Room>;
 pub type NeighbourTable = HashMap<RoomId, HashSet<RoomId>>;
 
@@ -548,8 +566,6 @@ impl Room {
             println!();
         }
 
-        //println!("Vertex path: {:?}", vertex_path.len() % 2);
-
         vertex_path = vertex_path
             .into_iter()
             .map(|point| {
@@ -570,7 +586,7 @@ impl Room {
         data = data.close();
 
         Path::new()
-            .set("fill", self.modifier.color())
+            .set("fill", "purple")
             .set("stroke", "white")
             .set("stroke-width", MAP_STROKE_WIDTH)
             .set("d", data)

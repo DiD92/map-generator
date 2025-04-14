@@ -1,6 +1,8 @@
+use std::collections::VecDeque;
+
 use crate::{
-    constants::{MIN_RECT_HEIGHT, MIN_RECT_WIDTH},
-    types::{Cell, Rect, SplitAxis},
+    constants::{MIN_RECT_HEIGHT, MIN_RECT_WIDTH, REGION_SPLIT_FACTOR},
+    types::{Cell, Rect, RectModifier, RectRegion, SplitAxis},
 };
 
 use rand::Rng;
@@ -35,7 +37,7 @@ impl Default for BinarySpacePartitioningConfig {
     fn default() -> Self {
         BinarySpacePartitioningConfig {
             rect_area_cutoff: 2,
-            big_rect_area_cutoff: 10,
+            big_rect_area_cutoff: 9,
             big_rect_survival_prob: 0.03,
             horizontal_split_prob: 0.6,
             height_factor_cutoff: 1.8,
@@ -54,7 +56,7 @@ impl BinarySpacePartitioning {
         width: u32,
         height: u32,
         config: BinarySpacePartitioningConfig,
-    ) -> Vec<Rect> {
+    ) -> Vec<Vec<Rect>> {
         if width <= MIN_RECT_WIDTH || height <= MIN_RECT_HEIGHT {
             return vec![];
         }
@@ -65,25 +67,134 @@ impl BinarySpacePartitioning {
             height,
         };
 
-        let split_rects = Self::generate_partitions(initial_rect, &config);
+        let region_count = usize::max(initial_rect.area() as usize / REGION_SPLIT_FACTOR, 2);
+        println!(
+            "Splitting inital rect of {}x{} into {} regions",
+            width, height, region_count
+        );
 
-        let trimmed_rects = Self::trim_split_rects(split_rects, &config);
+        let regions = Self::generate_regions(initial_rect, region_count, &config);
 
-        Self::trim_orphaned_rects(trimmed_rects)
+        let avg_region_area =
+            regions.iter().map(|r| r.rect.area()).sum::<u32>() / regions.len() as u32;
+        let min_region_area = regions.iter().map(|r| r.rect.area()).min().unwrap_or(0);
+        let max_region_area = regions.iter().map(|r| r.rect.area()).max().unwrap_or(0);
+        println!(
+            "Region area sizes: {}±{}",
+            avg_region_area,
+            max_region_area - min_region_area
+        );
+
+        regions
+            .into_par_iter()
+            .map(|region| {
+                let region_rects = Self::generate_partitions(region, &config);
+
+                let trimmed_rects = Self::trim_connected_rects(region_rects, &config);
+
+                Self::trim_orphaned_rects(trimmed_rects)
+            })
+            .collect()
+    }
+
+    fn generate_regions(
+        initial_rect: Rect,
+        region_count: usize,
+        config: &BinarySpacePartitioningConfig,
+    ) -> Vec<RectRegion> {
+        let mut rect_queue = VecDeque::new();
+        rect_queue.push_back(initial_rect);
+
+        let width = initial_rect.width;
+        let height = initial_rect.height;
+
+        let min_sizes = region_count as u32;
+
+        while rect_queue.len() < region_count {
+            let rect = rect_queue.pop_front().unwrap();
+
+            if rect.width < width / min_sizes || rect.height < height / min_sizes {
+                rect_queue.push_back(rect);
+                continue;
+            }
+
+            let (rect_a, maybe_rect_b) = Self::split_rect(
+                rect,
+                config.height_factor_cutoff,
+                config.width_factor_cutoff,
+                config.horizontal_split_prob,
+            );
+            rect_queue.push_front(rect_a);
+
+            if let Some(rect_b) = maybe_rect_b {
+                rect_queue.push_front(rect_b);
+            }
+        }
+
+        let mut rng = rand::rng();
+
+        rect_queue
+            .into_iter()
+            .map(|rect| {
+                let rect_modifier = match rng.random_range(0..100) {
+                    0..10 => RectModifier::Standard,
+                    10..50 => RectModifier::PreferHorizontal,
+                    50..75 => RectModifier::PreferVertical,
+                    _ => RectModifier::Chaotic,
+                };
+
+                RectRegion {
+                    rect,
+                    modifier: rect_modifier,
+                }
+            })
+            .collect()
     }
 
     fn generate_partitions(
-        initial_rect: Rect,
+        region: RectRegion,
         config: &BinarySpacePartitioningConfig,
     ) -> Vec<Rect> {
         let mut rng = rand::rng();
 
-        let mut rect_stack = vec![initial_rect];
+        let mut rect_stack = vec![region.rect];
 
         let mut split_rects = vec![];
 
         let min_area = config.rect_area_cutoff;
         let max_area = min_area * config.big_rect_area_cutoff;
+
+        let height_factor_cutoff = match region.modifier {
+            RectModifier::Standard => config.height_factor_cutoff,
+            RectModifier::PreferHorizontal => f32::min(1.0, config.height_factor_cutoff - 1.0),
+            RectModifier::PreferVertical => f32::max(4.0, config.height_factor_cutoff + 1.0),
+            RectModifier::Chaotic => {
+                (config.height_factor_cutoff + rng.random_range(-0.3..0.3)).clamp(5.0, 1.0)
+            }
+        };
+
+        let width_factor_cutoff = match region.modifier {
+            RectModifier::Standard => config.width_factor_cutoff,
+            RectModifier::PreferHorizontal => f32::max(4.0, config.width_factor_cutoff + 1.0),
+            RectModifier::PreferVertical => f32::min(1.0, config.width_factor_cutoff - 1.0),
+            RectModifier::Chaotic => {
+                (config.width_factor_cutoff + rng.random_range(-0.3..0.3)).clamp(5.0, 1.0)
+            }
+        };
+
+        let horizontal_split_prob = match region.modifier {
+            RectModifier::Standard => config.horizontal_split_prob,
+            RectModifier::PreferHorizontal => f64::max(0.9, config.horizontal_split_prob + 0.3),
+            RectModifier::PreferVertical => f64::max(0.1, config.horizontal_split_prob - 0.3),
+            RectModifier::Chaotic => {
+                (config.horizontal_split_prob + rng.random_range(-0.3..0.3)).clamp(0.1, 0.9)
+            }
+        };
+
+        println!(
+            "Splitting region: {} | HF:[{}] - WF:[{}] - HS:[{}]",
+            region, height_factor_cutoff, width_factor_cutoff, horizontal_split_prob
+        );
 
         while let Some(rect) = rect_stack.pop() {
             let rect_area = rect.area();
@@ -91,40 +202,17 @@ impl BinarySpacePartitioning {
                 if rect_area <= max_area && rng.random_bool(config.big_rect_survival_prob) {
                     split_rects.push(rect);
                 } else {
-                    let height_factor = rect.height as f32 / rect.width as f32;
-                    let width_factor = rect.width as f32 / rect.height as f32;
+                    let (rect_a, maybe_rect_b) = Self::split_rect(
+                        rect,
+                        height_factor_cutoff,
+                        width_factor_cutoff,
+                        horizontal_split_prob,
+                    );
 
-                    let split_axis = {
-                        if height_factor > config.height_factor_cutoff {
-                            SplitAxis::Horizontal
-                        } else if width_factor > config.width_factor_cutoff {
-                            SplitAxis::Vertical
-                        } else if rng.random_bool(config.horizontal_split_prob) {
-                            SplitAxis::Horizontal
-                        } else {
-                            SplitAxis::Vertical
-                        }
-                    };
+                    rect_stack.push(rect_a);
 
-                    match split_axis {
-                        SplitAxis::Horizontal => {
-                            let split_col = rng.random_range(1..rect.height);
-
-                            let (up, down) =
-                                rect.try_split_at(SplitAxis::Horizontal, split_col).unwrap();
-
-                            rect_stack.push(up);
-                            rect_stack.push(down);
-                        }
-                        SplitAxis::Vertical => {
-                            let split_row = rng.random_range(1..rect.width);
-
-                            let (left, right) =
-                                rect.try_split_at(SplitAxis::Vertical, split_row).unwrap();
-
-                            rect_stack.push(left);
-                            rect_stack.push(right);
-                        }
+                    if let Some(rect_b) = maybe_rect_b {
+                        rect_stack.push(rect_b);
                     }
                 }
             } else if rng.random_bool(config.rect_survival_prob) {
@@ -135,7 +223,56 @@ impl BinarySpacePartitioning {
         split_rects
     }
 
-    fn trim_split_rects(rects: Vec<Rect>, config: &BinarySpacePartitioningConfig) -> Vec<Rect> {
+    fn split_rect(
+        rect: Rect,
+        height_cutoff: f32,
+        width_cutoff: f32,
+        horizontal_split_prob: f64,
+    ) -> (Rect, Option<Rect>) {
+        let height_factor = rect.height as f32 / rect.width as f32;
+        let width_factor = rect.width as f32 / rect.height as f32;
+
+        let mut rng = rand::rng();
+
+        let split_axis = {
+            if height_factor > height_cutoff {
+                SplitAxis::Horizontal
+            } else if width_factor > width_cutoff {
+                SplitAxis::Vertical
+            } else if rng.random_bool(horizontal_split_prob) {
+                SplitAxis::Horizontal
+            } else {
+                SplitAxis::Vertical
+            }
+        };
+
+        match split_axis {
+            SplitAxis::Horizontal => {
+                if rect.height > 1 {
+                    let split_col = rng.random_range(1..rect.height);
+
+                    let (up, down) = rect.try_split_at(SplitAxis::Horizontal, split_col).unwrap();
+
+                    (up, Some(down))
+                } else {
+                    (rect, None)
+                }
+            }
+            SplitAxis::Vertical => {
+                if rect.width > 1 {
+                    let split_row = rng.random_range(1..rect.width);
+
+                    let (left, right) = rect.try_split_at(SplitAxis::Vertical, split_row).unwrap();
+
+                    (left, Some(right))
+                } else {
+                    (rect, None)
+                }
+            }
+        }
+    }
+
+    fn trim_connected_rects(rects: Vec<Rect>, config: &BinarySpacePartitioningConfig) -> Vec<Rect> {
         let neighbours = rects.clone();
 
         rects

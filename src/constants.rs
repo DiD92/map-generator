@@ -7,7 +7,6 @@ pub const RECT_SIZE_MULTIPLIER: u32 = 48;
 pub const REGION_SPLIT_FACTOR: usize = 684;
 
 pub const MAP_SIZE_MARGIN: u32 = 96;
-pub const MAP_STROKE_WIDTH: u32 = 4;
 
 pub const DIRECTIONS: [Direction; 4] = [
     Direction::North,

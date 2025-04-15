@@ -1,7 +1,4 @@
-use crate::{
-    algos::PolygonBuilder,
-    constants::{DIRECTIONS, MAP_SIZE_MARGIN, MAP_STROKE_WIDTH, RECT_SIZE_MULTIPLIER},
-};
+use crate::constants::DIRECTIONS;
 
 use std::{
     collections::HashMap,
@@ -11,10 +8,7 @@ use std::{
 };
 
 use anyhow::Result;
-use svg::{
-    Document,
-    node::element::{Path, path::Data},
-};
+use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Vector2 {
@@ -387,17 +381,6 @@ pub enum DoorModifier {
     None,
 }
 
-impl DoorModifier {
-    pub fn color(&self) -> &'static str {
-        match self {
-            DoorModifier::Open => "purple",
-            DoorModifier::Secret => "blue",
-            DoorModifier::Locked => "red",
-            DoorModifier::None => "purple",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Door {
     pub from: Cell,
@@ -412,66 +395,6 @@ impl Door {
             to,
             modifier: DoorModifier::Open,
         }
-    }
-
-    pub fn draw(&self) -> Path {
-        let mut data = Data::new();
-
-        let from = self
-            .from
-            .stretched_by(RECT_SIZE_MULTIPLIER)
-            .offset_by(MAP_SIZE_MARGIN / 2);
-        let to: Cell = self
-            .to
-            .stretched_by(RECT_SIZE_MULTIPLIER)
-            .offset_by(MAP_SIZE_MARGIN / 2);
-
-        let line_lenght_multiplier = match self.modifier {
-            DoorModifier::Open => 3,
-            DoorModifier::Secret => 4,
-            DoorModifier::Locked => 3,
-            DoorModifier::None => 2,
-        };
-
-        if from.col != to.col {
-            // Veritical door
-
-            if from.row == to.row {
-                let x = if from.col > to.col { from.col } else { to.col };
-
-                let from_y = from.row + MAP_STROKE_WIDTH * line_lenght_multiplier;
-                let to_y =
-                    from.row + RECT_SIZE_MULTIPLIER - (MAP_STROKE_WIDTH * line_lenght_multiplier);
-
-                data = data.move_to::<(u32, u32)>((x, from_y));
-                data = data.line_to::<(u32, u32)>((x, to_y));
-            } else {
-                println!("Door axis is not a straigt line!");
-            }
-        } else if from.row != to.row {
-            if from.col == to.col {
-                // Horizontal door
-                let y = if from.row > to.row { from.row } else { to.row };
-
-                let from_x = from.col + MAP_STROKE_WIDTH * line_lenght_multiplier;
-                let to_x =
-                    from.col + RECT_SIZE_MULTIPLIER - (MAP_STROKE_WIDTH * line_lenght_multiplier);
-
-                data = data.move_to::<(u32, u32)>((from_x, y));
-                data = data.line_to::<(u32, u32)>((to_x, y));
-            } else {
-                println!("Door axis is not a straigt line!");
-            }
-        } else {
-            println!("Door axis is a point!");
-        }
-
-        data = data.close();
-
-        Path::new()
-            .set("stroke", self.modifier.color())
-            .set("stroke-width", MAP_STROKE_WIDTH * 2)
-            .set("d", data)
     }
 }
 
@@ -497,7 +420,7 @@ pub enum RoomModifier {
     #[default]
     None,
     Connector,
-    Secret,
+    Navigation,
     Save,
     Item,
 }
@@ -510,86 +433,15 @@ pub type RoomId = usize;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Room {
     pub cells: Vec<Cell>,
-    pub modifier: RoomModifier,
+    pub modifier: Option<RoomModifier>,
 }
 
 impl Room {
     pub fn new_from_rect(rect: Rect) -> Self {
         Self {
             cells: rect.get_cells(),
-            modifier: RoomModifier::default(),
+            modifier: None,
         }
-    }
-
-    pub fn draw(&self) -> Path {
-        let (valid_vertices, valid_edges) = PolygonBuilder::build_for(self);
-
-        let mut vertices_to_visit = valid_vertices.clone();
-        let mut vertex_path = Vec::with_capacity(valid_edges.len());
-
-        let mut vertex_stack = vec![*vertices_to_visit.iter().next().unwrap()];
-
-        while let Some(vertex) = vertex_stack.pop() {
-            vertices_to_visit.remove(&vertex);
-
-            vertex_path.push(vertex);
-
-            for other_vertex in vertices_to_visit.iter() {
-                if vertex.distance(other_vertex) == 1 {
-                    let edge = Edge::new(vertex, *other_vertex);
-                    if valid_edges.contains(&edge) {
-                        vertex_stack.push(*other_vertex);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if vertex_path.len() % 2 != 0 {
-            println!(
-                "Vertex path is not even {} {}!",
-                valid_vertices.len(),
-                valid_edges.len()
-            );
-            for vertex in valid_vertices.iter() {
-                print!("{}, ", vertex);
-            }
-            println!();
-            for edge in valid_edges.iter() {
-                print!("{}, ", edge);
-            }
-            println!();
-            println!("{:?}", self.modifier);
-            for cell in self.cells.iter() {
-                print!("{}, ", cell);
-            }
-            println!();
-        }
-
-        vertex_path = vertex_path
-            .into_iter()
-            .map(|point| {
-                point
-                    .stretched_by(RECT_SIZE_MULTIPLIER)
-                    .offset_by(MAP_SIZE_MARGIN / 2)
-            })
-            .collect();
-
-        let first_point = vertex_path.pop().unwrap();
-        let mut data = Data::new();
-        data = data.move_to::<(u32, u32)>(first_point.into());
-        for point in vertex_path.into_iter() {
-            data = data.line_to::<(u32, u32)>(point.into());
-        }
-        data = data.line_to::<(u32, u32)>(first_point.into());
-
-        data = data.close();
-
-        Path::new()
-            .set("fill", "purple")
-            .set("stroke", "white")
-            .set("stroke-width", MAP_STROKE_WIDTH)
-            .set("d", data)
     }
 
     pub fn is_neighbour_of(&self, other: &Room) -> Option<(Cell, Cell, Direction)> {
@@ -622,32 +474,21 @@ impl Room {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Serialize, clap::ValueEnum)]
+pub enum MapStyle {
+    #[default]
+    CastlevaniaSOTN,
+    CastlevaniaAOS,
+    CastlevaniaCOTN,
+    MetroidZM,
+    MetroidFS,
+    MetroidSP,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Map {
     pub rooms: Vec<Room>,
     pub doors: Vec<Door>,
-}
-
-impl Map {
-    pub fn draw(&self, width: u32, height: u32) -> Document {
-        let mut document = Document::new()
-            .set("width", (width * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN)
-            .set("height", (height * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN)
-            .set("stroke", "white")
-            .set("stroke-width", "1");
-
-        for room in self.rooms.iter() {
-            let rect = room.draw();
-            document = document.add(rect);
-        }
-
-        for door in self.doors.iter() {
-            let door_svg = door.draw();
-            document = document.add(door_svg);
-        }
-
-        document
-    }
 }
 
 #[cfg(test)]
@@ -791,7 +632,7 @@ mod test {
                 .into_iter()
                 .chain(rect_1_2.get_cells())
                 .collect(),
-            modifier: RoomModifier::None,
+            modifier: None,
         };
 
         let rect_2 = Rect {
@@ -802,7 +643,7 @@ mod test {
 
         let room_2 = Room {
             cells: rect_2.get_cells(),
-            modifier: RoomModifier::None,
+            modifier: None,
         };
 
         assert!(room_1.is_neighbour_of(&room_2).is_some());

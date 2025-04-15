@@ -363,7 +363,7 @@ impl MapBuilder {
             .into_iter()
             .map(|cells| Room {
                 cells,
-                modifier: RoomModifier::Connector,
+                modifier: Some(RoomModifier::Connector),
             })
             .collect::<Vec<_>>()
     }

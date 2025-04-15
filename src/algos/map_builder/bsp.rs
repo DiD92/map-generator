@@ -10,6 +10,11 @@ use rayon::prelude::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BinarySpacePartitioningConfig {
+    // The proportion of regions that are going to be PreferHorizontal
+    // over PreferVertical. The Standard and Chaotic modifiers are
+    // excluded from this calculation. Since their proportions are fixed.
+    // The value is between 0.0 and 1.0.
+    pub horizontal_region_prob: f64,
     // The minimum area of a rectangle to be considered for splitting.
     pub rect_area_cutoff: u32,
     // The maximum area of a rectangle proportional to rect_area_cutoff
@@ -36,6 +41,7 @@ pub struct BinarySpacePartitioningConfig {
 impl Default for BinarySpacePartitioningConfig {
     fn default() -> Self {
         BinarySpacePartitioningConfig {
+            horizontal_region_prob: 0.5,
             rect_area_cutoff: 2,
             big_rect_area_cutoff: 9,
             big_rect_survival_prob: 0.03,
@@ -136,11 +142,17 @@ impl BinarySpacePartitioning {
         rect_queue
             .into_iter()
             .map(|rect| {
-                let rect_modifier = match rng.random_range(0..100) {
-                    0..10 => RectModifier::Standard,
-                    10..50 => RectModifier::PreferHorizontal,
-                    50..75 => RectModifier::PreferVertical,
-                    _ => RectModifier::Chaotic,
+                let roll = rng.random_range(1_u32..101);
+                let horizontal_bound = (85.0 * config.horizontal_region_prob) as u32;
+
+                let rect_modifier = if (0..10).contains(&roll) {
+                    RectModifier::Standard
+                } else if (10..horizontal_bound).contains(&roll) {
+                    RectModifier::PreferHorizontal
+                } else if (horizontal_bound..85).contains(&roll) {
+                    RectModifier::PreferVertical
+                } else {
+                    RectModifier::Chaotic
                 };
 
                 RectRegion {
@@ -166,30 +178,27 @@ impl BinarySpacePartitioning {
 
         let height_factor_cutoff = match region.modifier {
             RectModifier::Standard => config.height_factor_cutoff,
-            RectModifier::PreferHorizontal => f32::min(1.0, config.height_factor_cutoff - 1.0),
-            RectModifier::PreferVertical => f32::max(4.0, config.height_factor_cutoff + 1.0),
-            RectModifier::Chaotic => {
-                (config.height_factor_cutoff + rng.random_range(-0.3..0.3)).clamp(5.0, 1.0)
-            }
-        };
+            RectModifier::PreferHorizontal => config.height_factor_cutoff - 1.0,
+            RectModifier::PreferVertical => config.height_factor_cutoff + 1.0,
+            RectModifier::Chaotic => config.height_factor_cutoff + rng.random_range(-0.5..0.5),
+        }
+        .clamp(1.0, 5.0);
 
         let width_factor_cutoff = match region.modifier {
             RectModifier::Standard => config.width_factor_cutoff,
-            RectModifier::PreferHorizontal => f32::max(4.0, config.width_factor_cutoff + 1.0),
-            RectModifier::PreferVertical => f32::min(1.0, config.width_factor_cutoff - 1.0),
-            RectModifier::Chaotic => {
-                (config.width_factor_cutoff + rng.random_range(-0.3..0.3)).clamp(5.0, 1.0)
-            }
-        };
+            RectModifier::PreferHorizontal => config.width_factor_cutoff + 1.0,
+            RectModifier::PreferVertical => config.width_factor_cutoff - 1.0,
+            RectModifier::Chaotic => config.width_factor_cutoff + rng.random_range(-0.5..0.5),
+        }
+        .clamp(1.0, 5.0);
 
         let horizontal_split_prob = match region.modifier {
             RectModifier::Standard => config.horizontal_split_prob,
-            RectModifier::PreferHorizontal => f64::max(0.9, config.horizontal_split_prob + 0.3),
-            RectModifier::PreferVertical => f64::max(0.1, config.horizontal_split_prob - 0.3),
-            RectModifier::Chaotic => {
-                (config.horizontal_split_prob + rng.random_range(-0.3..0.3)).clamp(0.1, 0.9)
-            }
-        };
+            RectModifier::PreferHorizontal => config.horizontal_split_prob + 0.3,
+            RectModifier::PreferVertical => config.horizontal_split_prob - 0.3,
+            RectModifier::Chaotic => config.horizontal_split_prob + rng.random_range(-0.3..0.3),
+        }
+        .clamp(0.1, 0.9);
 
         println!(
             "Splitting region: {} | HF:[{}] - WF:[{}] - HS:[{}]",

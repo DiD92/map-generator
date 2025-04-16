@@ -43,19 +43,69 @@ impl MapBuilderConfig {
 
         match style {
             MapStyle::CastlevaniaSOTN => {
-                base.bsp_config.horizontal_region_prob = 0.73;
-                base.bsp_config.big_rect_survival_prob = 0.05;
-                base.bsp_config.horizontal_split_prob = 0.75;
-                base.bsp_config.width_factor_cutoff = 2.3;
-                base.bsp_config.rect_survival_prob = 0.39;
+                base.bsp_config.horizontal_region_prob = 0.75;
+                base.bsp_config.big_rect_area_cutoff = 14;
+                base.bsp_config.big_rect_survival_prob = 0.09;
+                base.bsp_config.horizontal_split_prob = 0.85;
+                base.bsp_config.height_factor_cutoff = 2.9;
+                base.bsp_config.width_factor_cutoff = 2.6;
+                base.bsp_config.rect_survival_prob = 0.33;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
 
                 base.random_room_merge_prob = 0.03;
                 base.group_loop_connection_chance = 0.19;
                 base.loop_connection_chance = 0.22;
-                base.repeat_small_room_merge_prob = 0.21;
+                base.repeat_small_room_merge_prob = 0.51;
             }
-            MapStyle::CastlevaniaAOS => todo!(),
-            MapStyle::CastlevaniaCOTN => todo!(),
+            MapStyle::CastlevaniaAOS => {
+                base.bsp_config.horizontal_region_prob = 0.0;
+                base.bsp_config.big_rect_area_cutoff = 11;
+                base.bsp_config.big_rect_survival_prob = 0.12;
+                base.bsp_config.horizontal_split_prob = 0.82;
+                base.bsp_config.height_factor_cutoff = 2.4;
+                base.bsp_config.width_factor_cutoff = 2.6;
+                base.bsp_config.rect_survival_prob = 0.51;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.77;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.85;
+
+                base.random_room_merge_prob = 0.01;
+                base.group_loop_connection_chance = 0.19;
+                base.loop_connection_chance = 0.24;
+                base.repeat_small_room_merge_prob = 0.45;
+            }
+            MapStyle::CastlevaniaCOTN => {
+                base.bsp_config.horizontal_region_prob = 0.1;
+                base.bsp_config.big_rect_area_cutoff = 12;
+                base.bsp_config.big_rect_survival_prob = 0.15;
+                base.bsp_config.horizontal_split_prob = 0.82;
+                base.bsp_config.height_factor_cutoff = 1.4;
+                base.bsp_config.width_factor_cutoff = 2.6;
+                base.bsp_config.rect_survival_prob = 0.81;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.77;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.85;
+
+                base.random_room_merge_prob = 0.04;
+                base.group_loop_connection_chance = 0.10;
+                base.loop_connection_chance = 0.14;
+                base.repeat_small_room_merge_prob = 0.55;
+            }
+            MapStyle::CastlevaniaHOD => {
+                base.bsp_config.horizontal_region_prob = 0.75;
+                base.bsp_config.big_rect_area_cutoff = 8;
+                base.bsp_config.big_rect_survival_prob = 0.09;
+                base.bsp_config.horizontal_split_prob = 0.85;
+                base.bsp_config.height_factor_cutoff = 1.9;
+                base.bsp_config.width_factor_cutoff = 1.6;
+                base.bsp_config.rect_survival_prob = 0.63;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.5;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.5;
+
+                base.random_room_merge_prob = 0.03;
+                base.group_loop_connection_chance = 0.19;
+                base.loop_connection_chance = 0.22;
+                base.repeat_small_room_merge_prob = 0.81;
+            }
             MapStyle::MetroidZM => todo!(),
             MapStyle::MetroidFS => todo!(),
             MapStyle::MetroidSP => todo!(),
@@ -113,14 +163,17 @@ impl MapBuilder {
 
             Self::reconnect_room_groups(&mut room_table, &mut neighbour_table, config);
 
+            let doors = Self::add_doors_to_rooms(&room_table, &neighbour_table, config);
+
             room_decorator::RoomDecorator::decorate(
                 &room_decorator,
                 &mut room_table,
                 &neighbour_table,
+                &doors,
                 config,
             );
 
-            let (rooms, doors) = Self::add_doors_to_rooms(room_table, neighbour_table, config);
+            let rooms = room_table.into_values().collect();
 
             Map { rooms, doors }
         } else {
@@ -135,14 +188,17 @@ impl MapBuilder {
                         .collect::<RoomTable>();
                     let neighbour_table = Self::generate_neighbour_table(&room_table);
 
+                    let doors = Self::add_doors_to_rooms(&room_table, &neighbour_table, config);
+
                     room_decorator::RoomDecorator::decorate(
                         &room_decorator,
                         &mut room_table,
                         &neighbour_table,
+                        &doors,
                         config,
                     );
 
-                    Self::add_doors_to_rooms(room_table, neighbour_table, config)
+                    (room_table.into_values().collect::<Vec<_>>(), doors)
                 })
                 .flatten()
                 .collect::<(Vec<_>, Vec<_>)>();

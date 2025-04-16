@@ -407,9 +407,18 @@ impl MapBuilder {
                     continue;
                 }
 
+                let room = rooms.get(room_id).unwrap();
                 let neighbour_room = rooms.get(neighbour_id).unwrap();
 
                 if neighbour_room.cells.len() > max_size {
+                    continue;
+                }
+
+                // If either rooms are the only neighbour of the other and that room has a area of 1
+                // we don't merge them
+                if (room.cells.len() == 1 && neighbour_table[room_id].len() == 1)
+                    || neighbour_room.cells.len() == 1 && neighbour_table[neighbour_id].len() == 1
+                {
                     continue;
                 }
 

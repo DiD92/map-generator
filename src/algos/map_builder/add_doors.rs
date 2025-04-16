@@ -1,5 +1,5 @@
 use super::{MapBuilder, MapBuilderConfig};
-use crate::types::{Door, DoorModifier, NeighbourTable, Room, RoomId, RoomTable};
+use crate::types::{Door, DoorModifier, NeighbourTable, RoomId, RoomTable};
 
 use std::collections::{HashMap, HashSet};
 
@@ -7,10 +7,10 @@ use rand::Rng;
 
 impl MapBuilder {
     pub(super) fn add_doors_to_rooms(
-        rooms: RoomTable,
-        neighbour_table: NeighbourTable,
+        rooms: &RoomTable,
+        neighbour_table: &NeighbourTable,
         config: &MapBuilderConfig,
-    ) -> (Vec<Room>, Vec<Door>) {
+    ) -> Vec<Door> {
         let mut doors = Vec::with_capacity(rooms.len());
 
         let mut visited_rooms = HashSet::new();
@@ -47,7 +47,22 @@ impl MapBuilder {
 
                 let neighbour_room = &rooms[neighbour_id];
 
-                if let Some((from, to, _)) = room.is_neighbour_of(neighbour_room) {
+                if let Some(neighbouring_cells) = room.is_neighbour_of(neighbour_room) {
+                    let priority_neighbouring_cells = neighbouring_cells
+                        .iter()
+                        .copied()
+                        .filter(|(_, _, direction)| direction.is_horizontal())
+                        .collect::<Vec<_>>();
+
+                    let neighouring_cells_selection = if priority_neighbouring_cells.is_empty() {
+                        neighbouring_cells
+                    } else {
+                        priority_neighbouring_cells
+                    };
+
+                    let selected_cell = rng.random_range(0..neighouring_cells_selection.len());
+                    let (from, to, _) = neighouring_cells_selection[selected_cell];
+
                     let mut door = Door::new(from, to);
 
                     match rng.random_range(0..100_u32) {
@@ -67,6 +82,6 @@ impl MapBuilder {
             }
         }
 
-        (rooms.into_values().collect(), doors)
+        doors
     }
 }

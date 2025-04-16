@@ -18,9 +18,10 @@ pub(crate) struct MapDrawerFactory;
 impl MapDrawerFactory {
     pub(crate) fn create_drawer(map_style: MapStyle) -> impl MapDrawer {
         match map_style {
-            MapStyle::CastlevaniaSOTN => castlevania::CastlevaniaMapDrawer,
-            MapStyle::CastlevaniaAOS => todo!(),
-            MapStyle::CastlevaniaCOTN => todo!(),
+            MapStyle::CastlevaniaSOTN => castlevania::CastlevaniaMapDrawer::CastlevaniaSOTN,
+            MapStyle::CastlevaniaAOS => castlevania::CastlevaniaMapDrawer::CastlevaniaAOS,
+            MapStyle::CastlevaniaCOTN => castlevania::CastlevaniaMapDrawer::CastlevaniaCOTN,
+            MapStyle::CastlevaniaHOD => castlevania::CastlevaniaMapDrawer::CastlevaniaHOD,
             MapStyle::MetroidZM => todo!(),
             MapStyle::MetroidFS => todo!(),
             MapStyle::MetroidSP => todo!(),

@@ -1,12 +1,14 @@
 use super::RoomDecorator;
 use crate::{
     algos::MapBuilderConfig,
-    types::{NeighbourTable, RoomModifier, RoomTable},
+    types::{Cell, Direction, Door, NeighbourTable, RoomModifier, RoomTable},
 };
 
 use rand::Rng;
 
 use std::collections::HashSet;
+
+const MIN_ROOM_DISTANCE: u32 = 8;
 
 pub(super) struct CastlevaniaRoomDectorator;
 
@@ -15,22 +17,82 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
         &self,
         rooms: &mut RoomTable,
         neighbour_table: &NeighbourTable,
+        doors: &[Door],
         _: &MapBuilderConfig,
     ) {
         let mut target_rooms = HashSet::new();
 
+        let door_map = doors
+            .iter()
+            .map(|door| (&door.from, &door.to))
+            .collect::<HashSet<_>>();
+
         for (idx, room) in rooms.iter() {
-            if room.cells.len() == 1 && neighbour_table[idx].len() < 3 {
-                target_rooms.insert(*idx);
+            if room.cells.len() > 1 {
+                continue;
             }
+
+            let any_neighbour_is_vertical = neighbour_table[idx].iter().any(|neighbour_id| {
+                let neighour = rooms.get(neighbour_id).unwrap();
+                room.is_neighbour_of(neighour)
+                    .unwrap()
+                    .iter()
+                    .any(|(from, to, direction)| {
+                        (door_map.contains(&(from, to)) || door_map.contains(&(to, from)))
+                            && direction == &Direction::South
+                    })
+            });
+
+            if any_neighbour_is_vertical {
+                continue;
+            }
+
+            target_rooms.insert(*idx);
         }
 
         let mut rng = rand::rng();
 
+        let mut save_rooms = HashSet::<Cell>::new();
+        let mut navigation_rooms = HashSet::<Cell>::new();
+
         for room_id in target_rooms.iter() {
+            let room_cell = rooms.get(room_id).unwrap().cells[0];
+
+            let mut min_distance = u32::MAX;
+
             let modifier = match rng.random_range(0_u32..100) {
-                0..10 => Some(RoomModifier::Save),
-                10..17 => Some(RoomModifier::Navigation),
+                0..60 => {
+                    for save_cell in save_rooms.iter() {
+                        let distance = save_cell.distance(&room_cell);
+                        if distance < min_distance {
+                            min_distance = distance;
+                        }
+                    }
+
+                    if min_distance != u32::MAX && min_distance < MIN_ROOM_DISTANCE {
+                        None
+                    } else {
+                        save_rooms.insert(room_cell);
+
+                        Some(RoomModifier::Save)
+                    }
+                }
+                60..83 => {
+                    for nav_cell in navigation_rooms.iter() {
+                        let distance = nav_cell.distance(&room_cell);
+                        if distance < min_distance {
+                            min_distance = distance;
+                        }
+                    }
+
+                    if min_distance != u32::MAX && min_distance < MIN_ROOM_DISTANCE {
+                        None
+                    } else {
+                        navigation_rooms.insert(room_cell);
+
+                        Some(RoomModifier::Navigation)
+                    }
+                }
                 _ => None,
             };
 

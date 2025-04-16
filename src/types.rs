@@ -444,20 +444,26 @@ impl Room {
         }
     }
 
-    pub fn is_neighbour_of(&self, other: &Room) -> Option<(Cell, Cell, Direction)> {
+    pub fn is_neighbour_of(&self, other: &Room) -> Option<Vec<(Cell, Cell, Direction)>> {
         if self == other {
             return None;
         }
 
+        let mut neighour_cells = Vec::new();
+
         for cell in self.cells.iter() {
             for other_cell in other.cells.iter() {
                 if let Some(direction) = cell.is_neighbour_of(other_cell) {
-                    return Some((*cell, *other_cell, direction));
+                    neighour_cells.push((*cell, *other_cell, direction));
                 }
             }
         }
 
-        None
+        if neighour_cells.is_empty() {
+            None
+        } else {
+            Some(neighour_cells)
+        }
     }
 
     pub fn merged_with(self, other: Room) -> Self {
@@ -480,6 +486,7 @@ pub enum MapStyle {
     CastlevaniaSOTN,
     CastlevaniaAOS,
     CastlevaniaCOTN,
+    CastlevaniaHOD,
     MetroidZM,
     MetroidFS,
     MetroidSP,

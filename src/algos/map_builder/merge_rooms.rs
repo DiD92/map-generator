@@ -21,6 +21,12 @@ impl MapBuilder {
 
                 let neighbour_count = neighbours.len();
 
+                let room = rooms.get(i).unwrap();
+
+                if room.cells.len() == 1 && neighbour_count == 1 {
+                    return None;
+                }
+
                 if neighbour_count > 0 && rng.random_bool(config.random_room_merge_prob) {
                     let selected_neighbour = *neighbours
                         .iter()

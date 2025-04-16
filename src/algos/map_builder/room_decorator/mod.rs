@@ -1,5 +1,5 @@
 use super::MapBuilderConfig;
-use crate::types::{MapStyle, NeighbourTable, RoomTable};
+use crate::types::{Door, MapStyle, NeighbourTable, RoomTable};
 
 mod castlevania;
 
@@ -8,6 +8,7 @@ pub(super) trait RoomDecorator {
         &self,
         rooms: &mut RoomTable,
         neighbour_table: &NeighbourTable,
+        doors: &[Door],
         config: &MapBuilderConfig,
     );
 }
@@ -20,6 +21,7 @@ impl RoomDecoratorFactory {
             MapStyle::CastlevaniaSOTN => castlevania::CastlevaniaRoomDectorator,
             MapStyle::CastlevaniaAOS => castlevania::CastlevaniaRoomDectorator,
             MapStyle::CastlevaniaCOTN => castlevania::CastlevaniaRoomDectorator,
+            MapStyle::CastlevaniaHOD => castlevania::CastlevaniaRoomDectorator,
             MapStyle::MetroidZM => todo!(),
             MapStyle::MetroidFS => todo!(),
             MapStyle::MetroidSP => todo!(),

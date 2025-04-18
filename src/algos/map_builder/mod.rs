@@ -22,6 +22,7 @@ pub struct MapBuilderConfig {
     // cause a navigation loop in the map.
     pub loop_connection_chance: f64,
     pub repeat_small_room_merge_prob: f64,
+    pub bisect_room_prob: f64,
 }
 
 impl Default for MapBuilderConfig {
@@ -33,6 +34,7 @@ impl Default for MapBuilderConfig {
             group_loop_connection_chance: 0.17,
             loop_connection_chance: 0.2,
             repeat_small_room_merge_prob: 0.2,
+            bisect_room_prob: 0.1,
         }
     }
 }
@@ -57,6 +59,7 @@ impl MapBuilderConfig {
                 base.group_loop_connection_chance = 0.19;
                 base.loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.51;
+                base.bisect_room_prob = 0.17;
             }
             MapStyle::CastlevaniaAOS => {
                 base.bsp_config.horizontal_region_prob = 0.0;
@@ -73,6 +76,7 @@ impl MapBuilderConfig {
                 base.group_loop_connection_chance = 0.19;
                 base.loop_connection_chance = 0.24;
                 base.repeat_small_room_merge_prob = 0.45;
+                base.bisect_room_prob = 0.15;
             }
             MapStyle::CastlevaniaCOTN => {
                 base.bsp_config.horizontal_region_prob = 0.1;
@@ -81,14 +85,15 @@ impl MapBuilderConfig {
                 base.bsp_config.horizontal_split_prob = 0.82;
                 base.bsp_config.height_factor_cutoff = 1.4;
                 base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.81;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.77;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.85;
+                base.bsp_config.rect_survival_prob = 0.95;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.95;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.60;
 
-                base.random_room_merge_prob = 0.04;
+                base.random_room_merge_prob = 0.15;
                 base.group_loop_connection_chance = 0.10;
                 base.loop_connection_chance = 0.14;
-                base.repeat_small_room_merge_prob = 0.55;
+                base.repeat_small_room_merge_prob = 0.85;
+                base.bisect_room_prob = 0.29;
             }
             MapStyle::CastlevaniaHOD => {
                 base.bsp_config.horizontal_region_prob = 0.75;
@@ -97,14 +102,15 @@ impl MapBuilderConfig {
                 base.bsp_config.horizontal_split_prob = 0.85;
                 base.bsp_config.height_factor_cutoff = 1.9;
                 base.bsp_config.width_factor_cutoff = 1.6;
-                base.bsp_config.rect_survival_prob = 0.63;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.5;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.5;
+                base.bsp_config.rect_survival_prob = 0.70;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
 
                 base.random_room_merge_prob = 0.03;
                 base.group_loop_connection_chance = 0.19;
                 base.loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.81;
+                base.bisect_room_prob = 0.17;
             }
             MapStyle::MetroidZM => todo!(),
             MapStyle::MetroidFS => todo!(),
@@ -131,7 +137,7 @@ impl MapBuilder {
         Ok(MapBuilder { cols, rows })
     }
 
-    pub fn build(&self, config: &MapBuilderConfig, style: MapStyle) -> Map {
+    pub fn build(&self, config: &MapBuilderConfig, style: MapStyle) -> Vec<Map> {
         let build_start = std::time::SystemTime::now();
 
         let rects = bsp::BinarySpacePartitioning::generate_and_trim_partitions(
@@ -175,11 +181,11 @@ impl MapBuilder {
 
             let rooms = room_table.into_values().collect();
 
-            Map { rooms, doors }
+            vec![Map { rooms, doors }]
         } else {
             let room_tables = rooms.collect::<Vec<_>>();
 
-            let (rooms, doors) = room_tables
+            room_tables
                 .into_par_iter()
                 .map(|room_table| {
                     let mut room_table = room_table
@@ -198,21 +204,31 @@ impl MapBuilder {
                         config,
                     );
 
-                    (room_table.into_values().collect::<Vec<_>>(), doors)
+                    Map {
+                        rooms: room_table.into_values().collect(),
+                        doors,
+                    }
                 })
-                .flatten()
-                .collect::<(Vec<_>, Vec<_>)>();
+                .collect::<Vec<_>>()
 
             // TODO: We need an additional step to connect the regions either with special doors or another means
 
-            Map { rooms, doors }
+            //Map { rooms, doors }
         };
+
+        let built_rooms = generate_map
+            .iter()
+            .fold(0_usize, |acc, map| acc + map.rooms.len());
+
+        let built_doors = generate_map
+            .iter()
+            .fold(0_usize, |acc, map| acc + map.doors.len());
 
         let build_end = std::time::SystemTime::now();
         println!(
             "Built map with {} rooms and {} doors in {:?}ms",
-            generate_map.rooms.len(),
-            generate_map.doors.len(),
+            built_rooms,
+            built_doors,
             build_end.duration_since(build_start).unwrap().as_millis()
         );
 

@@ -33,7 +33,7 @@ pub(super) enum CastlevaniaMapDrawer {
 }
 
 impl MapDrawer for CastlevaniaMapDrawer {
-    fn draw(&self, map: &Map, config: &DrawConfig) -> svg::Document {
+    fn draw(&self, maps: Vec<Map>, config: &DrawConfig) -> svg::Document {
         let mut document = Document::new()
             .set(
                 "width",
@@ -51,9 +51,23 @@ impl MapDrawer for CastlevaniaMapDrawer {
             CastlevaniaMapDrawer::CastlevaniaHOD => (LIME_GREEN, LIME_GREEN, LIGHT_WHITE),
         };
 
+        let merged_map = {
+            let mut map = Map {
+                rooms: vec![],
+                doors: vec![],
+            };
+
+            for map_fragment in maps.into_iter() {
+                map.rooms.extend(map_fragment.rooms);
+                map.doors.extend(map_fragment.doors);
+            }
+
+            map
+        };
+
         let full_door = self == &CastlevaniaMapDrawer::CastlevaniaAOS;
 
-        for room_path in map
+        for room_path in merged_map
             .rooms
             .iter()
             .map(|room| Self::draw_room(room, room_color, wall_color))
@@ -61,7 +75,7 @@ impl MapDrawer for CastlevaniaMapDrawer {
             document = document.add(room_path);
         }
 
-        for door_path in map
+        for door_path in merged_map
             .doors
             .iter()
             .map(|door| Self::draw_door(door, door_color, full_door))
@@ -69,7 +83,7 @@ impl MapDrawer for CastlevaniaMapDrawer {
             document = document.add(door_path);
         }
 
-        for room in map.rooms.iter() {
+        for room in merged_map.rooms.iter() {
             // We need to overlay a rect for the save and navigation rooms
             // to avoid clipping artifacts with the doors.
             if let Some(modifier) = room.modifier {

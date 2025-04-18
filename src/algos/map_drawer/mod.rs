@@ -10,7 +10,7 @@ pub(crate) struct DrawConfig {
 }
 
 pub(crate) trait MapDrawer {
-    fn draw(&self, map: &Map, config: &DrawConfig) -> Document;
+    fn draw(&self, map: Vec<Map>, config: &DrawConfig) -> Document;
 }
 
 pub(crate) struct MapDrawerFactory;

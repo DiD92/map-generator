@@ -27,14 +27,14 @@ fn main() {
 
     let builder = algos::MapBuilder::new(columns, rows).unwrap();
     let build_config = algos::MapBuilderConfig::from_style(args.style);
-    let map = builder.build(&build_config, args.style);
+    let maps = builder.build(&build_config, args.style);
 
     let drawer = algos::MapDrawerFactory::create_drawer(args.style);
     let draw_config = algos::DrawConfig {
         canvas_width: columns,
         canvas_height: rows,
     };
-    let svg = algos::MapDrawer::draw(&drawer, &map, &draw_config);
+    let svg = algos::MapDrawer::draw(&drawer, maps, &draw_config);
 
     let svg_name = {
         use std::time::SystemTime;

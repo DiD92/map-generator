@@ -1,7 +1,7 @@
 use super::RoomDecorator;
 use crate::{
     algos::MapBuilderConfig,
-    types::{Cell, Direction, Door, NeighbourTable, RoomModifier, RoomTable},
+    types::{Cell, Door, NeighbourTable, RoomModifier, RoomTable},
 };
 
 use rand::Rng;
@@ -39,7 +39,7 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
                     .iter()
                     .any(|(from, to, direction)| {
                         (door_map.contains(&(from, to)) || door_map.contains(&(to, from)))
-                            && direction == &Direction::South
+                            && !direction.is_horizontal()
                     })
             });
 
@@ -58,18 +58,19 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
         for room_id in target_rooms.iter() {
             let room_cell = rooms.get(room_id).unwrap().cells[0];
 
-            let mut min_distance = u32::MAX;
+            let mut min_save_distance = u32::MAX;
+            let mut min_nav_distance = u32::MAX;
 
             let modifier = match rng.random_range(0_u32..100) {
-                0..60 => {
+                0..50 => {
                     for save_cell in save_rooms.iter() {
                         let distance = save_cell.distance(&room_cell);
-                        if distance < min_distance {
-                            min_distance = distance;
+                        if distance < min_save_distance {
+                            min_save_distance = distance;
                         }
                     }
 
-                    if min_distance != u32::MAX && min_distance < MIN_ROOM_DISTANCE {
+                    if min_save_distance != u32::MAX && min_save_distance < MIN_ROOM_DISTANCE {
                         None
                     } else {
                         save_rooms.insert(room_cell);
@@ -77,15 +78,15 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
                         Some(RoomModifier::Save)
                     }
                 }
-                60..83 => {
+                50..71 => {
                     for nav_cell in navigation_rooms.iter() {
                         let distance = nav_cell.distance(&room_cell);
-                        if distance < min_distance {
-                            min_distance = distance;
+                        if distance < min_nav_distance {
+                            min_nav_distance = distance;
                         }
                     }
 
-                    if min_distance != u32::MAX && min_distance < MIN_ROOM_DISTANCE {
+                    if min_nav_distance != u32::MAX && min_nav_distance < MIN_ROOM_DISTANCE {
                         None
                     } else {
                         navigation_rooms.insert(room_cell);

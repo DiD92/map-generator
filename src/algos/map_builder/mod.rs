@@ -1,10 +1,11 @@
-use crate::types::*;
+use crate::{constants::REGION_SPLIT_FACTOR, types::*};
 
 use anyhow::Result;
 use rayon::prelude::*;
 
 mod add_doors;
 mod bsp;
+mod connect_regions;
 mod gen_rooms;
 mod merge_rooms;
 mod reconnect_rooms;
@@ -112,9 +113,66 @@ impl MapBuilderConfig {
                 base.repeat_small_room_merge_prob = 0.81;
                 base.bisect_room_prob = 0.17;
             }
-            MapStyle::MetroidZM => todo!(),
-            MapStyle::MetroidFS => todo!(),
-            MapStyle::MetroidSP => todo!(),
+            MapStyle::MetroidZM => {
+                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 1;
+                base.bsp_config.horizontal_region_prob = 0.75;
+                base.bsp_config.big_rect_area_cutoff = 14;
+                base.bsp_config.big_rect_survival_prob = 0.09;
+                base.bsp_config.horizontal_split_prob = 0.85;
+                base.bsp_config.height_factor_cutoff = 2.9;
+                base.bsp_config.width_factor_cutoff = 2.6;
+                base.bsp_config.rect_survival_prob = 0.33;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
+
+                base.merge_regions = false;
+
+                base.random_room_merge_prob = 0.03;
+                base.group_loop_connection_chance = 0.19;
+                base.loop_connection_chance = 0.22;
+                base.repeat_small_room_merge_prob = 0.51;
+                base.bisect_room_prob = 0.17;
+            }
+            MapStyle::MetroidFS => {
+                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 1;
+                base.bsp_config.horizontal_region_prob = 0.75;
+                base.bsp_config.big_rect_area_cutoff = 14;
+                base.bsp_config.big_rect_survival_prob = 0.09;
+                base.bsp_config.horizontal_split_prob = 0.85;
+                base.bsp_config.height_factor_cutoff = 2.9;
+                base.bsp_config.width_factor_cutoff = 2.6;
+                base.bsp_config.rect_survival_prob = 0.33;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
+
+                base.merge_regions = false;
+
+                base.random_room_merge_prob = 0.03;
+                base.group_loop_connection_chance = 0.19;
+                base.loop_connection_chance = 0.22;
+                base.repeat_small_room_merge_prob = 0.51;
+                base.bisect_room_prob = 0.17;
+            }
+            MapStyle::MetroidSP => {
+                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 1;
+                base.bsp_config.horizontal_region_prob = 0.75;
+                base.bsp_config.big_rect_area_cutoff = 14;
+                base.bsp_config.big_rect_survival_prob = 0.09;
+                base.bsp_config.horizontal_split_prob = 0.85;
+                base.bsp_config.height_factor_cutoff = 2.9;
+                base.bsp_config.width_factor_cutoff = 2.6;
+                base.bsp_config.rect_survival_prob = 0.33;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
+
+                base.merge_regions = false;
+
+                base.random_room_merge_prob = 0.03;
+                base.group_loop_connection_chance = 0.19;
+                base.loop_connection_chance = 0.22;
+                base.repeat_small_room_merge_prob = 0.51;
+                base.bisect_room_prob = 0.17;
+            }
         }
 
         base
@@ -140,87 +198,100 @@ impl MapBuilder {
     pub fn build(&self, config: &MapBuilderConfig, style: MapStyle) -> Vec<Map> {
         let build_start = std::time::SystemTime::now();
 
-        let rects = bsp::BinarySpacePartitioning::generate_and_trim_partitions(
+        let rect_regions = bsp::BinarySpacePartitioning::generate_and_trim_partitions(
             self.cols,
             self.rows,
             config.bsp_config,
         );
 
-        let rooms = rects.into_par_iter().map(|rects| {
-            let (rooms, neighbours) = Self::generate_initial_rooms(rects);
+        let map_regions = rect_regions
+            .into_par_iter()
+            .map(|(origin_rect, region_rects)| {
+                let mut map_region = Self::generate_map_region(origin_rect, region_rects);
 
-            let (mut rooms, mut neighbours) = Self::merge_random_rooms(rooms, neighbours, config);
+                Self::merge_random_rooms(&mut map_region, config);
 
-            Self::reconnect_room_groups(&mut rooms, &mut neighbours, config);
+                Self::reconnect_room_groups(&mut map_region, config);
 
-            rooms.into_values().collect::<Vec<_>>()
-        });
+                map_region
+            });
 
-        let room_decorator = room_decorator::RoomDecoratorFactory::decorator_for(style);
-
-        let generate_map = if config.merge_regions {
-            let mut room_table = rooms
+        let generated_maps = if config.merge_regions {
+            let region_rooms = map_regions
+                .map(|mut region| {
+                    region
+                        .rooms
+                        .drain()
+                        .map(|(_, room)| room)
+                        .collect::<Vec<_>>()
+                })
                 .flatten()
-                .collect::<Vec<_>>()
-                .into_par_iter()
-                .enumerate()
-                .collect::<RoomTable>();
-            let mut neighbour_table = Self::generate_neighbour_table(&room_table);
+                .collect::<Vec<_>>();
 
-            Self::reconnect_room_groups(&mut room_table, &mut neighbour_table, config);
+            let room_table = Self::generate_room_table(region_rooms);
 
-            let doors = Self::add_doors_to_rooms(&room_table, &neighbour_table, config);
+            let neighbour_map = Self::generate_neighbour_table(&room_table);
 
+            let mut map_region = MapRegion {
+                origin_rect: Rect {
+                    origin: Cell::new(0, 0),
+                    width: self.cols,
+                    height: self.rows,
+                },
+                rooms: room_table,
+                neighbours: neighbour_map,
+            };
+
+            Self::reconnect_room_groups(&mut map_region, config);
+
+            let doors = Self::add_doors_to_rooms(&map_region, config);
+
+            let room_decorator = room_decorator::RoomDecoratorFactory::decorator_for(style);
             room_decorator::RoomDecorator::decorate(
-                &room_decorator,
-                &mut room_table,
-                &neighbour_table,
+                room_decorator.as_ref(),
+                &mut map_region,
                 &doors,
                 config,
             );
 
-            let rooms = room_table.into_values().collect();
+            let rooms = map_region.rooms.into_values().collect();
 
-            vec![Map { rooms, doors }]
+            vec![Map {
+                origin_rect: map_region.origin_rect,
+                rooms,
+                doors,
+            }]
         } else {
-            let room_tables = rooms.collect::<Vec<_>>();
+            let mut maps = map_regions
+                .map(|mut map_region| {
+                    let doors = Self::add_doors_to_rooms(&map_region, config);
 
-            room_tables
-                .into_par_iter()
-                .map(|room_table| {
-                    let mut room_table = room_table
-                        .into_par_iter()
-                        .enumerate()
-                        .collect::<RoomTable>();
-                    let neighbour_table = Self::generate_neighbour_table(&room_table);
-
-                    let doors = Self::add_doors_to_rooms(&room_table, &neighbour_table, config);
-
+                    let room_decorator = room_decorator::RoomDecoratorFactory::decorator_for(style);
                     room_decorator::RoomDecorator::decorate(
-                        &room_decorator,
-                        &mut room_table,
-                        &neighbour_table,
+                        room_decorator.as_ref(),
+                        &mut map_region,
                         &doors,
                         config,
                     );
 
                     Map {
-                        rooms: room_table.into_values().collect(),
+                        origin_rect: map_region.origin_rect,
+                        rooms: map_region.rooms.into_values().collect(),
                         doors,
                     }
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
 
-            // TODO: We need an additional step to connect the regions either with special doors or another means
+            Self::connect_regions(&mut maps);
 
-            //Map { rooms, doors }
+            maps
         };
 
-        let built_rooms = generate_map
+        let built_rooms = generated_maps
             .iter()
             .fold(0_usize, |acc, map| acc + map.rooms.len());
 
-        let built_doors = generate_map
+        let built_doors = generated_maps
             .iter()
             .fold(0_usize, |acc, map| acc + map.doors.len());
 
@@ -232,6 +303,6 @@ impl MapBuilder {
             build_end.duration_since(build_start).unwrap().as_millis()
         );
 
-        generate_map
+        generated_maps
     }
 }

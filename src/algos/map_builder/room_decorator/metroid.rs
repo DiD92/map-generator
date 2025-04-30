@@ -10,9 +10,13 @@ use std::collections::HashSet;
 
 const MIN_ROOM_DISTANCE: u32 = 8;
 
-pub(super) struct CastlevaniaRoomDectorator;
+pub(super) enum MetroidRoomDecorator {
+    ZeroMission,
+    Fusion,
+    SuperMetroid,
+}
 
-impl RoomDecorator for CastlevaniaRoomDectorator {
+impl RoomDecorator for MetroidRoomDecorator {
     fn decorate(&self, map_region: &mut MapRegion, doors: &[Door], _: &MapBuilderConfig) {
         let rooms = &mut map_region.rooms;
         let neighbour_table = &map_region.neighbours;
@@ -53,7 +57,13 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
         let mut navigation_rooms = HashSet::<Cell>::new();
 
         for room_id in target_rooms.iter() {
-            let room_cell = rooms.get(room_id).unwrap().cells[0];
+            let room = &rooms[room_id];
+
+            if room.modifier.is_some() {
+                continue;
+            }
+
+            let room_cell = room.cells[0];
 
             let mut min_save_distance = u32::MAX;
             let mut min_nav_distance = u32::MAX;

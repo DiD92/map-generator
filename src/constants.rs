@@ -4,7 +4,7 @@ pub const MIN_RECT_WIDTH: u32 = 4;
 pub const MIN_RECT_HEIGHT: u32 = 4;
 
 pub const RECT_SIZE_MULTIPLIER: u32 = 48;
-pub const REGION_SPLIT_FACTOR: usize = 684;
+pub const REGION_SPLIT_FACTOR: u32 = 684;
 
 pub const MAP_SIZE_MARGIN: u32 = 96;
 

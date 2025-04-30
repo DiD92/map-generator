@@ -54,6 +54,13 @@ impl Cell {
         }
     }
 
+    pub fn offset_by_two(&self, offset_col: u32, offset_row: u32) -> Cell {
+        Cell {
+            col: self.col + offset_col,
+            row: self.row + offset_row,
+        }
+    }
+
     pub fn stretched_by(&self, factor: u32) -> Cell {
         Cell {
             col: self.col * factor,
@@ -247,6 +254,19 @@ impl Display for RectRegion {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MapRegion {
+    pub origin_rect: Rect,
+    pub rooms: RoomTable,
+    pub neighbours: NeighbourTable,
+}
+
+impl Display for MapRegion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} - {}", self.origin_rect.origin, self.rooms.len())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rect {
     pub origin: Cell,
@@ -261,6 +281,18 @@ impl Display for Rect {
             "({},{}) - [{}x{}]",
             self.origin.col, self.origin.row, self.width, self.height
         )
+    }
+}
+
+impl PartialOrd for Rect {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Rect {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.origin.cmp(&other.origin)
     }
 }
 
@@ -314,9 +346,9 @@ impl Rect {
         }
     }
 
-    pub fn is_neighbour_of(&self, other: &Rect) -> bool {
+    pub fn is_neighbour_of(&self, other: &Rect) -> Option<Direction> {
         if self == other {
-            return false;
+            return None;
         }
 
         for direction in DIRECTIONS.iter() {
@@ -328,11 +360,11 @@ impl Rect {
             };
 
             if self_edge.intersects_with(&other_edge) {
-                return true;
+                return Some(*direction);
             }
         }
 
-        false
+        None
     }
 
     pub fn get_cells(&self) -> Vec<Cell> {
@@ -413,6 +445,15 @@ impl Direction {
             Direction::East | Direction::West => true,
         }
     }
+
+    pub fn reverse(&self) -> Self {
+        match self {
+            Direction::North => Direction::South,
+            Direction::South => Direction::North,
+            Direction::East => Direction::West,
+            Direction::West => Direction::East,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
@@ -423,6 +464,7 @@ pub enum RoomModifier {
     Navigation,
     Save,
     Item,
+    RegionConnection(Direction),
 }
 
 pub type RoomTable = HashMap<RoomId, Room>;
@@ -478,6 +520,22 @@ impl Room {
             modifier: self.modifier,
         }
     }
+
+    pub fn get_center(&self) -> Vector2 {
+        let mut center = Vector2::ZERO;
+
+        let cell_count = self.cells.len() as f32;
+
+        for cell in self.cells.iter() {
+            center.x += cell.col as f32;
+            center.y += cell.row as f32;
+        }
+
+        center.x /= cell_count;
+        center.y /= cell_count;
+
+        center
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Serialize, clap::ValueEnum)]
@@ -494,6 +552,7 @@ pub enum MapStyle {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Map {
+    pub origin_rect: Rect,
     pub rooms: Vec<Room>,
     pub doors: Vec<Door>,
 }
@@ -617,7 +676,7 @@ mod test {
             height: 1,
         };
 
-        assert!(rect_1.is_neighbour_of(&rect_2));
+        assert!(rect_1.is_neighbour_of(&rect_2).is_some());
     }
 
     #[test]

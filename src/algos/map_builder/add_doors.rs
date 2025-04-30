@@ -1,5 +1,5 @@
 use super::{MapBuilder, MapBuilderConfig};
-use crate::types::{Door, DoorModifier, NeighbourTable, RoomId, RoomTable};
+use crate::types::{Door, DoorModifier, MapRegion, RoomId};
 
 use std::collections::{HashMap, HashSet};
 
@@ -7,10 +7,12 @@ use rand::Rng;
 
 impl MapBuilder {
     pub(super) fn add_doors_to_rooms(
-        rooms: &RoomTable,
-        neighbour_table: &NeighbourTable,
+        map_region: &MapRegion,
         config: &MapBuilderConfig,
     ) -> Vec<Door> {
+        let rooms = &map_region.rooms;
+        let neighbour_table = &map_region.neighbours;
+
         let mut doors = Vec::with_capacity(rooms.len());
 
         let mut visited_rooms = HashSet::new();

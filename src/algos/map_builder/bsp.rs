@@ -10,6 +10,7 @@ use rayon::prelude::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BinarySpacePartitioningConfig {
+    pub region_split_factor: u32,
     // The proportion of regions that are going to be PreferHorizontal
     // over PreferVertical. The Standard and Chaotic modifiers are
     // excluded from this calculation. Since their proportions are fixed.
@@ -41,6 +42,7 @@ pub struct BinarySpacePartitioningConfig {
 impl Default for BinarySpacePartitioningConfig {
     fn default() -> Self {
         BinarySpacePartitioningConfig {
+            region_split_factor: REGION_SPLIT_FACTOR,
             horizontal_region_prob: 0.5,
             rect_area_cutoff: 2,
             big_rect_area_cutoff: 9,
@@ -62,7 +64,7 @@ impl BinarySpacePartitioning {
         width: u32,
         height: u32,
         config: BinarySpacePartitioningConfig,
-    ) -> Vec<Vec<Rect>> {
+    ) -> Vec<(Rect, Vec<Rect>)> {
         if width <= MIN_RECT_WIDTH || height <= MIN_RECT_HEIGHT {
             return vec![];
         }
@@ -73,7 +75,7 @@ impl BinarySpacePartitioning {
             height,
         };
 
-        let region_count = usize::max(initial_rect.area() as usize / REGION_SPLIT_FACTOR, 2);
+        let region_count = u32::max(initial_rect.area() / config.region_split_factor, 2);
         println!(
             "Splitting inital rect of {}x{} into {} regions",
             width, height, region_count
@@ -94,18 +96,20 @@ impl BinarySpacePartitioning {
         regions
             .into_par_iter()
             .map(|region| {
+                let origin_rect = region.rect;
+
                 let region_rects = Self::generate_partitions(region, &config);
 
                 let trimmed_rects = Self::trim_connected_rects(region_rects, &config);
 
-                Self::trim_orphaned_rects(trimmed_rects)
+                (origin_rect, Self::trim_orphaned_rects(trimmed_rects))
             })
             .collect()
     }
 
     fn generate_regions(
         initial_rect: Rect,
-        region_count: usize,
+        region_count: u32,
         config: &BinarySpacePartitioningConfig,
     ) -> Vec<RectRegion> {
         let mut rect_queue = VecDeque::new();
@@ -116,7 +120,7 @@ impl BinarySpacePartitioning {
 
         let min_sizes = region_count as u32;
 
-        while rect_queue.len() < region_count {
+        while rect_queue.len() < region_count as usize {
             let rect = rect_queue.pop_front().unwrap();
 
             if rect.width < width / min_sizes || rect.height < height / min_sizes {
@@ -289,7 +293,7 @@ impl BinarySpacePartitioning {
             .filter(|rect| {
                 let neighbour_count = neighbours
                     .par_iter()
-                    .filter(|other_rect| rect.is_neighbour_of(other_rect))
+                    .filter(|other_rect| rect.is_neighbour_of(other_rect).is_some())
                     .count();
 
                 let mut rng = rand::rng();
@@ -312,7 +316,7 @@ impl BinarySpacePartitioning {
             .filter(|rect| {
                 neighbours
                     .par_iter()
-                    .filter(|other_rect| rect.is_neighbour_of(other_rect))
+                    .filter(|other_rect| rect.is_neighbour_of(other_rect).is_some())
                     .count()
                     != 0
             })

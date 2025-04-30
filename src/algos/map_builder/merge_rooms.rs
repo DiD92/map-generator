@@ -1,5 +1,5 @@
 use super::{MapBuilder, MapBuilderConfig};
-use crate::types::{NeighbourTable, RoomTable};
+use crate::types::MapRegion;
 
 use std::{collections::HashSet, sync::Mutex};
 
@@ -7,21 +7,18 @@ use rand::Rng;
 use rayon::prelude::*;
 
 impl MapBuilder {
-    pub(super) fn merge_random_rooms(
-        rooms: RoomTable,
-        neighbour_table: NeighbourTable,
-        config: &MapBuilderConfig,
-    ) -> (RoomTable, NeighbourTable) {
+    pub(super) fn merge_random_rooms(map_region: &mut MapRegion, config: &MapBuilderConfig) {
         let rooms_to_merge_mutex = Mutex::new(HashSet::new());
 
-        let merge_groups = neighbour_table
+        let merge_groups = map_region
+            .neighbours
             .par_iter()
             .filter_map(|(i, neighbours)| {
                 let mut rng = rand::rng();
 
                 let neighbour_count = neighbours.len();
 
-                let room = rooms.get(i).unwrap();
+                let room = &map_region.rooms[i];
 
                 if room.cells.len() == 1 && neighbour_count == 1 {
                     return None;
@@ -52,45 +49,38 @@ impl MapBuilder {
             })
             .collect::<Vec<_>>();
 
-        let rooms_mutex = Mutex::new(rooms);
-        let neighbour_table_mutex = Mutex::new(neighbour_table);
+        let map_region_mutex = Mutex::new(map_region);
 
         merge_groups.into_par_iter().for_each(|(from, to)| {
-            if let Ok(ref mut rooms) = rooms_mutex.lock() {
-                let from_room = rooms.remove(&from).unwrap();
-                let to_room = rooms.remove(&to).unwrap();
+            let mut map_region = map_region_mutex
+                .lock()
+                .expect("Failed to lock map_region mutex");
 
-                let merged_room = from_room.merged_with(to_room);
-                rooms.insert(from, merged_room);
-            } else {
-                println!("Failed to lock rooms mutex");
-                return;
-            }
+            let rooms = &mut map_region.rooms;
 
-            if let Ok(ref mut neighbour_table) = neighbour_table_mutex.lock() {
-                let mut from_neighbours = neighbour_table.remove(&from).unwrap();
-                from_neighbours.remove(&to);
+            let from_room = rooms.remove(&from).unwrap();
+            let to_room = rooms.remove(&to).unwrap();
 
-                let mut to_neighbours = neighbour_table.remove(&to).unwrap();
-                to_neighbours.remove(&from);
+            let merged_room = from_room.merged_with(to_room);
+            rooms.insert(from, merged_room);
 
-                for neighbour in to_neighbours.iter() {
-                    if let Some(neighbours) = neighbour_table.get_mut(neighbour) {
-                        neighbours.remove(&to);
-                        neighbours.insert(from);
-                    }
+            let neighbour_table = &mut map_region.neighbours;
+
+            let mut from_neighbours = neighbour_table.remove(&from).unwrap();
+            from_neighbours.remove(&to);
+
+            let mut to_neighbours = neighbour_table.remove(&to).unwrap();
+            to_neighbours.remove(&from);
+
+            for neighbour in to_neighbours.iter() {
+                if let Some(neighbours) = neighbour_table.get_mut(neighbour) {
+                    neighbours.remove(&to);
+                    neighbours.insert(from);
                 }
-
-                from_neighbours.extend(to_neighbours);
-                neighbour_table.insert(from, from_neighbours);
-            } else {
-                println!("Failed to lock neighbour table mutex");
             }
-        });
 
-        (
-            rooms_mutex.into_inner().unwrap(),
-            neighbour_table_mutex.into_inner().unwrap(),
-        )
+            from_neighbours.extend(to_neighbours);
+            neighbour_table.insert(from, from_neighbours);
+        });
     }
 }

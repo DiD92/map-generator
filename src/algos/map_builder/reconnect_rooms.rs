@@ -1,5 +1,5 @@
 use super::{MapBuilder, MapBuilderConfig};
-use crate::types::{Cell, NeighbourTable, Room, RoomId, RoomModifier, RoomTable, Vector2};
+use crate::types::{Cell, MapRegion, Room, RoomId, RoomModifier, Vector2};
 
 use std::{
     collections::{HashMap, HashSet},
@@ -10,12 +10,8 @@ use rand::Rng;
 use rayon::prelude::*;
 
 impl MapBuilder {
-    pub(super) fn reconnect_room_groups(
-        rooms: &mut RoomTable,
-        neighbour_table: &mut NeighbourTable,
-        config: &MapBuilderConfig,
-    ) {
-        let mut room_groups = Self::generate_room_groups(rooms, neighbour_table);
+    pub(super) fn reconnect_room_groups(map_region: &mut MapRegion, config: &MapBuilderConfig) {
+        let mut room_groups = Self::generate_room_groups(map_region);
 
         loop {
             // We remove groups with just 1 room
@@ -24,8 +20,8 @@ impl MapBuilder {
                     true
                 } else {
                     for room_id in group.iter() {
-                        rooms.remove(room_id);
-                        neighbour_table.remove(room_id);
+                        map_region.rooms.remove(room_id);
+                        map_region.neighbours.remove(room_id);
                     }
 
                     false
@@ -34,39 +30,26 @@ impl MapBuilder {
 
             if room_groups.len() > 1 {
                 // If there is more than one group, we need to connect them together
-                Self::connect_room_groups(room_groups, rooms, neighbour_table, config);
+                Self::connect_room_groups(room_groups, map_region, config);
 
-                room_groups = Self::generate_room_groups(rooms, neighbour_table);
+                room_groups = Self::generate_room_groups(map_region);
             } else {
                 break;
             }
         }
 
         // We randomly merge some groups of 1 sized-rooms first
-        Self::merge_repeated_simple_rooms(
-            rooms,
-            neighbour_table,
-            1,
-            config.repeat_small_room_merge_prob,
-        );
+        Self::merge_repeated_simple_rooms(map_region, 1, config.repeat_small_room_merge_prob);
         // Then we merge rooms of size 2 or less
-        Self::merge_repeated_simple_rooms(
-            rooms,
-            neighbour_table,
-            2,
-            config.repeat_small_room_merge_prob / 2.0,
-        );
+        Self::merge_repeated_simple_rooms(map_region, 2, config.repeat_small_room_merge_prob / 2.0);
 
-        Self::bisect_long_horizontal_rooms(rooms, neighbour_table, config.bisect_room_prob);
+        Self::bisect_long_horizontal_rooms(map_region, config.bisect_room_prob);
     }
 
-    fn generate_room_groups(
-        rooms: &RoomTable,
-        neighbour_table: &NeighbourTable,
-    ) -> HashMap<usize, HashSet<RoomId>> {
+    fn generate_room_groups(map_region: &mut MapRegion) -> HashMap<usize, HashSet<RoomId>> {
         let mut room_groups = HashMap::new();
         let mut group_id = 0;
-        let mut map_rooms = rooms.keys().cloned().collect::<HashSet<_>>();
+        let mut map_rooms = map_region.rooms.keys().cloned().collect::<HashSet<_>>();
 
         while !map_rooms.is_empty() {
             let initial_room = *map_rooms.iter().next().unwrap();
@@ -78,7 +61,7 @@ impl MapBuilder {
                 visited_rooms.insert(room_id);
                 map_rooms.remove(&room_id);
 
-                for neighbour_id in neighbour_table[&room_id].iter() {
+                for neighbour_id in map_region.neighbours[&room_id].iter() {
                     if !visited_rooms.contains(neighbour_id) {
                         rooms_to_visit.push(*neighbour_id);
                     }
@@ -95,8 +78,7 @@ impl MapBuilder {
 
     fn connect_room_groups(
         room_groups: HashMap<usize, HashSet<RoomId>>,
-        rooms: &mut RoomTable,
-        neighbour_table: &mut NeighbourTable,
+        map_region: &mut MapRegion,
         config: &MapBuilderConfig,
     ) {
         let group_count = room_groups.len() as f32;
@@ -107,7 +89,7 @@ impl MapBuilder {
             / group_count)
             * 0.3;
 
-        let next_room_id = AtomicUsize::new(*rooms.keys().max().unwrap() + 1);
+        let next_room_id = AtomicUsize::new(map_region.rooms.keys().max().unwrap() + 1);
 
         let rooms_to_remove = Mutex::new(Vec::new());
 
@@ -131,9 +113,9 @@ impl MapBuilder {
                         group
                             .par_iter()
                             .flat_map(|room_id| {
-                                rooms.get(room_id).unwrap().cells.par_iter().map(|cell| {
-                                    (Vector2::new(cell.col as f32, cell.row as f32), 1_u32)
-                                })
+                                map_region.rooms.get(room_id).unwrap().cells.par_iter().map(
+                                    |cell| (Vector2::new(cell.col as f32, cell.row as f32), 1_u32),
+                                )
                             })
                             .reduce(
                                 || (Vector2::ZERO, 0_u32),
@@ -156,8 +138,8 @@ impl MapBuilder {
         let rooms_to_remove = rooms_to_remove.into_inner().unwrap();
 
         for room_id in rooms_to_remove.into_iter() {
-            rooms.remove(&room_id);
-            neighbour_table.remove(&room_id);
+            map_region.rooms.remove(&room_id);
+            map_region.neighbours.remove(&room_id);
         }
 
         let mut closer_groups = Vec::new();
@@ -207,7 +189,8 @@ impl MapBuilder {
         }
 
         let cell_map_mutex = Mutex::new(
-            rooms
+            map_region
+                .rooms
                 .par_iter()
                 .flat_map(|(room_id, room)| {
                     room.cells.par_iter().copied().map(|cell| (cell, *room_id))
@@ -224,7 +207,7 @@ impl MapBuilder {
                     let rooms_a = room_groups.get(group_a).unwrap();
 
                     rooms_a.iter().fold(Vec::new(), |mut acc, room_id| {
-                        let room = rooms.get(room_id).unwrap();
+                        let room = map_region.rooms.get(room_id).unwrap();
                         acc.extend(room.cells.clone());
                         acc
                     })
@@ -233,7 +216,7 @@ impl MapBuilder {
                 let cells_b = {
                     let rooms_b = room_groups.get(group_b).unwrap();
                     rooms_b.iter().fold(Vec::new(), |mut acc, room_id| {
-                        let room = rooms.get(room_id).unwrap();
+                        let room = map_region.rooms.get(room_id).unwrap();
                         acc.extend(room.cells.clone());
                         acc
                     })
@@ -278,7 +261,7 @@ impl MapBuilder {
         let new_rooms = new_rooms.into_inner().unwrap();
 
         for (room_id, _) in new_rooms.iter() {
-            neighbour_table.insert(*room_id, HashSet::new());
+            map_region.neighbours.insert(*room_id, HashSet::new());
         }
 
         for (room_id, room) in new_rooms.into_iter() {
@@ -288,7 +271,8 @@ impl MapBuilder {
                     if let Some(neighbour_id) = cell_map.get(&maybe_neighbour) {
                         if neighbour_id != &room_id {
                             room_neighours.insert(*neighbour_id);
-                            neighbour_table
+                            map_region
+                                .neighbours
                                 .get_mut(neighbour_id)
                                 .unwrap()
                                 .insert(room_id);
@@ -297,11 +281,12 @@ impl MapBuilder {
                 }
             }
 
-            neighbour_table
+            map_region
+                .neighbours
                 .get_mut(&room_id)
                 .unwrap()
                 .extend(room_neighours);
-            rooms.insert(room_id, room);
+            map_region.rooms.insert(room_id, room);
         }
     }
 
@@ -370,17 +355,12 @@ impl MapBuilder {
             .collect::<Vec<_>>()
     }
 
-    fn merge_repeated_simple_rooms(
-        rooms: &mut RoomTable,
-        neighbour_table: &mut NeighbourTable,
-        max_size: usize,
-        merge_prob: f64,
-    ) {
+    fn merge_repeated_simple_rooms(map_region: &mut MapRegion, max_size: usize, merge_prob: f64) {
         let mut merge_candidates = HashSet::new();
 
         let mut non_merge_candidates = HashSet::new();
 
-        for (i, room) in rooms.iter() {
+        for (i, room) in map_region.rooms.iter() {
             let room_cells = room.cells.len();
 
             if room_cells <= max_size {
@@ -404,13 +384,13 @@ impl MapBuilder {
 
             let mut room_merged = false;
 
-            for neighbour_id in neighbour_table[room_id].iter() {
+            for neighbour_id in map_region.neighbours[room_id].iter() {
                 if visited_rooms.contains(neighbour_id) {
                     continue;
                 }
 
-                let room = rooms.get(room_id).unwrap();
-                let neighbour_room = rooms.get(neighbour_id).unwrap();
+                let room = map_region.rooms.get(room_id).unwrap();
+                let neighbour_room = map_region.rooms.get(neighbour_id).unwrap();
 
                 if neighbour_room.cells.len() > max_size {
                     continue;
@@ -418,8 +398,9 @@ impl MapBuilder {
 
                 // If either rooms are the only neighbour of the other and that room has a area of 1
                 // we don't merge them
-                if (room.cells.len() == 1 && neighbour_table[room_id].len() == 1)
-                    || neighbour_room.cells.len() == 1 && neighbour_table[neighbour_id].len() == 1
+                if (room.cells.len() == 1 && map_region.neighbours[room_id].len() == 1)
+                    || neighbour_room.cells.len() == 1
+                        && map_region.neighbours[neighbour_id].len() == 1
                 {
                     continue;
                 }
@@ -440,40 +421,36 @@ impl MapBuilder {
             }
         }
         for (from, to) in merge_pairs.into_iter() {
-            let from_room = rooms.remove(&from).unwrap();
-            let to_room = rooms.remove(&to).unwrap();
+            let from_room = map_region.rooms.remove(&from).unwrap();
+            let to_room = map_region.rooms.remove(&to).unwrap();
 
             let merged_room = from_room.merged_with(to_room);
-            rooms.insert(from, merged_room);
+            map_region.rooms.insert(from, merged_room);
 
-            let mut to_neighbours = neighbour_table.remove(&to).unwrap();
+            let mut to_neighbours = map_region.neighbours.remove(&to).unwrap();
             to_neighbours.remove(&from);
 
             for neighbour in to_neighbours.iter() {
-                if let Some(neighbours) = neighbour_table.get_mut(neighbour) {
+                if let Some(neighbours) = map_region.neighbours.get_mut(neighbour) {
                     neighbours.remove(&to);
                     neighbours.insert(from);
                 }
             }
 
-            let from_neighbours = neighbour_table.get_mut(&from).unwrap();
+            let from_neighbours = map_region.neighbours.get_mut(&from).unwrap();
             from_neighbours.remove(&to);
 
             from_neighbours.extend(to_neighbours);
         }
     }
 
-    fn bisect_long_horizontal_rooms(
-        rooms: &mut RoomTable,
-        neighbour_table: &mut NeighbourTable,
-        bisect_chance: f64,
-    ) {
+    fn bisect_long_horizontal_rooms(map_region: &mut MapRegion, bisect_chance: f64) {
         let mut target_rooms = HashSet::new();
-        let mut next_room_id = *rooms.keys().max().unwrap() + 1;
+        let mut next_room_id = map_region.rooms.keys().max().unwrap() + 1;
 
         let mut rng = rand::rng();
 
-        for (idx, room) in rooms.iter() {
+        for (idx, room) in map_region.rooms.iter() {
             if room.cells.len() < 2 {
                 continue;
             }
@@ -497,7 +474,7 @@ impl MapBuilder {
                 continue;
             }
 
-            let mut room = rooms.remove(&room_id).unwrap();
+            let mut room = map_region.rooms.remove(&room_id).unwrap();
 
             room.cells.sort_by(|a, b| a.col.cmp(&b.col));
 
@@ -509,7 +486,7 @@ impl MapBuilder {
                     cells: vec![room.cells[bisect_cell]],
                     modifier: room.modifier,
                 };
-                Self::recompute_neighours_for(room_id, rooms, neighbour_table, room_a_id, room_a);
+                Self::recompute_neighours_for(room_id, map_region, room_a_id, room_a);
 
                 next_room_id += 1;
                 let room_b_id = next_room_id;
@@ -517,13 +494,15 @@ impl MapBuilder {
                     cells: room.cells[(bisect_cell + 1)..].to_vec(),
                     modifier: room.modifier,
                 };
-                Self::recompute_neighours_for(room_id, rooms, neighbour_table, room_b_id, room_b);
+                Self::recompute_neighours_for(room_id, map_region, room_b_id, room_b);
 
-                neighbour_table
+                map_region
+                    .neighbours
                     .get_mut(&room_a_id)
                     .unwrap()
                     .insert(room_b_id);
-                neighbour_table
+                map_region
+                    .neighbours
                     .get_mut(&room_b_id)
                     .unwrap()
                     .insert(room_a_id);
@@ -533,7 +512,7 @@ impl MapBuilder {
                     cells: room.cells[0..bisect_cell].to_vec(),
                     modifier: room.modifier,
                 };
-                Self::recompute_neighours_for(room_id, rooms, neighbour_table, room_a_id, room_a);
+                Self::recompute_neighours_for(room_id, map_region, room_a_id, room_a);
 
                 next_room_id += 1;
                 let room_b_id = next_room_id;
@@ -541,12 +520,14 @@ impl MapBuilder {
                     cells: vec![room.cells[bisect_cell]],
                     modifier: room.modifier,
                 };
-                Self::recompute_neighours_for(room_id, rooms, neighbour_table, room_b_id, room_b);
-                neighbour_table
+                Self::recompute_neighours_for(room_id, map_region, room_b_id, room_b);
+                map_region
+                    .neighbours
                     .get_mut(&room_a_id)
                     .unwrap()
                     .insert(room_b_id);
-                neighbour_table
+                map_region
+                    .neighbours
                     .get_mut(&room_b_id)
                     .unwrap()
                     .insert(room_a_id);
@@ -556,7 +537,7 @@ impl MapBuilder {
                     cells: room.cells[0..bisect_cell].to_vec(),
                     modifier: room.modifier,
                 };
-                Self::recompute_neighours_for(room_id, rooms, neighbour_table, room_a_id, room_a);
+                Self::recompute_neighours_for(room_id, map_region, room_a_id, room_a);
 
                 next_room_id += 1;
                 let room_b_id = next_room_id;
@@ -564,7 +545,7 @@ impl MapBuilder {
                     cells: vec![room.cells[bisect_cell]],
                     modifier: room.modifier,
                 };
-                Self::recompute_neighours_for(room_id, rooms, neighbour_table, room_b_id, room_b);
+                Self::recompute_neighours_for(room_id, map_region, room_b_id, room_b);
 
                 next_room_id += 1;
                 let room_c_id = next_room_id;
@@ -572,46 +553,49 @@ impl MapBuilder {
                     cells: room.cells[(bisect_cell + 1)..].to_vec(),
                     modifier: room.modifier,
                 };
-                Self::recompute_neighours_for(room_id, rooms, neighbour_table, room_c_id, room_c);
+                Self::recompute_neighours_for(room_id, map_region, room_c_id, room_c);
 
-                neighbour_table
+                map_region
+                    .neighbours
                     .get_mut(&room_a_id)
                     .unwrap()
                     .insert(room_b_id);
-                neighbour_table
+                map_region
+                    .neighbours
                     .get_mut(&room_b_id)
                     .unwrap()
                     .insert(room_a_id);
-                neighbour_table
+                map_region
+                    .neighbours
                     .get_mut(&room_b_id)
                     .unwrap()
                     .insert(room_c_id);
-                neighbour_table
+                map_region
+                    .neighbours
                     .get_mut(&room_c_id)
                     .unwrap()
                     .insert(room_b_id);
             }
 
             next_room_id += 1;
-            neighbour_table.remove(&room_id).unwrap();
+            map_region.neighbours.remove(&room_id).unwrap();
         }
     }
 
     fn recompute_neighours_for(
         room_id: RoomId,
-        rooms: &mut RoomTable,
-        neighbour_table: &mut NeighbourTable,
+        map_region: &mut MapRegion,
         new_room_id: RoomId,
         new_room: Room,
     ) {
         let mut new_neighbours = HashSet::new();
 
-        for neighbour in neighbour_table[&room_id].clone() {
-            let neighbours = neighbour_table.get_mut(&neighbour).unwrap();
+        for neighbour in map_region.neighbours[&room_id].clone() {
+            let neighbours = map_region.neighbours.get_mut(&neighbour).unwrap();
 
             neighbours.remove(&room_id);
 
-            let neighbour_room = rooms.get(&neighbour).unwrap();
+            let neighbour_room = map_region.rooms.get(&neighbour).unwrap();
 
             if new_room.is_neighbour_of(neighbour_room).is_some() {
                 neighbours.insert(new_room_id);
@@ -619,7 +603,7 @@ impl MapBuilder {
             }
         }
 
-        neighbour_table.insert(new_room_id, new_neighbours);
-        rooms.insert(new_room_id, new_room);
+        map_region.neighbours.insert(new_room_id, new_neighbours);
+        map_region.rooms.insert(new_room_id, new_room);
     }
 }

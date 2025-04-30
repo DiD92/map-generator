@@ -1,19 +1,23 @@
 use super::MapBuilder;
-use crate::types::{NeighbourTable, Rect, Room, RoomTable};
+use crate::types::{MapRegion, NeighbourTable, Rect, Room, RoomTable};
 
 use std::{collections::HashSet, sync::Mutex};
 
 use rayon::prelude::*;
 
 impl MapBuilder {
-    pub(super) fn generate_initial_rooms(rects: Vec<Rect>) -> (RoomTable, NeighbourTable) {
+    pub(super) fn generate_map_region(origin_rect: Rect, rects: Vec<Rect>) -> MapRegion {
         let rooms = rects.into_par_iter().map(Room::new_from_rect).collect();
 
         let room_table = Self::generate_room_table(rooms);
 
         let neighbour_map = Self::generate_neighbour_table(&room_table);
 
-        (room_table, neighbour_map)
+        MapRegion {
+            origin_rect,
+            rooms: room_table,
+            neighbours: neighbour_map,
+        }
     }
 
     pub(super) fn generate_room_table(rooms: Vec<Room>) -> RoomTable {

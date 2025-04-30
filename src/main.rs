@@ -34,7 +34,7 @@ fn main() {
         canvas_width: columns,
         canvas_height: rows,
     };
-    let svg = algos::MapDrawer::draw(&drawer, maps, &draw_config);
+    let svg = algos::MapDrawer::draw(drawer.as_ref(), maps, &draw_config);
 
     let svg_name = {
         use std::time::SystemTime;

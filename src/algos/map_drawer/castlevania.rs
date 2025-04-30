@@ -3,26 +3,12 @@ use svg::{
     node::element::{Path, Rectangle, path::Data},
 };
 
-use super::{DrawConfig, MapDrawer};
+use super::*;
 use crate::{
     algos::PolygonBuilder,
     constants::{MAP_SIZE_MARGIN, RECT_SIZE_MULTIPLIER},
-    types::{Cell, Door, DoorModifier, Edge, Map, Room, RoomModifier},
+    types::{Cell, Door, DoorModifier, Edge, Map, Rect, Room, RoomModifier},
 };
-
-const LIGHT_BLUE: &str = "#0080ff";
-const CYAN_BLUE: &str = "#00c8c8";
-const DARK_BLUE: &str = "#004bff";
-const DEEP_BLUE: &str = "#0000e0";
-const LIME_GREEN: &str = "#00e000";
-
-const LIGHT_WHITE: &str = "#f8f8f8";
-const LIGHT_GRAY: &str = "#c0c0c0";
-
-const RED: &str = "#f80000";
-const YELLOW: &str = "#f8f800";
-
-const STROKE_WIDTH: u32 = 12;
 
 #[derive(Debug, PartialEq)]
 pub(super) enum CastlevaniaMapDrawer {
@@ -34,15 +20,13 @@ pub(super) enum CastlevaniaMapDrawer {
 
 impl MapDrawer for CastlevaniaMapDrawer {
     fn draw(&self, maps: Vec<Map>, config: &DrawConfig) -> svg::Document {
+        let document_width = (config.canvas_width * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN;
+        let document_height = (config.canvas_height * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN;
+
+        println!("Document size: [{}x{}]", document_width, document_height);
         let mut document = Document::new()
-            .set(
-                "width",
-                (config.canvas_width * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN,
-            )
-            .set(
-                "height",
-                (config.canvas_height * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN,
-            );
+            .set("width", document_width)
+            .set("height", document_height);
 
         let (room_color, door_color, wall_color) = match self {
             CastlevaniaMapDrawer::CastlevaniaSOTN => (LIGHT_BLUE, LIGHT_BLUE, LIGHT_GRAY),
@@ -53,6 +37,11 @@ impl MapDrawer for CastlevaniaMapDrawer {
 
         let merged_map = {
             let mut map = Map {
+                origin_rect: Rect {
+                    origin: Cell::new(0, 0),
+                    width: config.canvas_width,
+                    height: config.canvas_height,
+                },
                 rooms: vec![],
                 doors: vec![],
             };

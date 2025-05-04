@@ -1,8 +1,7 @@
+use super::MetroidMapDrawer;
 use crate::types::Room;
 
 use svg::node::element::{Path, Polygon};
-
-use super::MetroidMapDrawer;
 
 mod fusion;
 mod super_metroid;

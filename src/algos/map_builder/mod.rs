@@ -114,7 +114,8 @@ impl MapBuilderConfig {
                 base.bisect_room_prob = 0.17;
             }
             MapStyle::MetroidZM => {
-                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 2;
+                base.bsp_config.region_split_factor =
+                    (REGION_SPLIT_FACTOR / 4) + (REGION_SPLIT_FACTOR / 2);
                 base.bsp_config.horizontal_region_prob = 0.75;
                 base.bsp_config.big_rect_area_cutoff = 14;
                 base.bsp_config.big_rect_survival_prob = 0.09;
@@ -122,8 +123,8 @@ impl MapBuilderConfig {
                 base.bsp_config.height_factor_cutoff = 2.9;
                 base.bsp_config.width_factor_cutoff = 2.6;
                 base.bsp_config.rect_survival_prob = 0.33;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
+                base.bsp_config.trim_highly_connected_rect_prob = 0.6;
+                base.bsp_config.trim_fully_connected_rect_prob = 0.7;
 
                 base.merge_regions = false;
 
@@ -134,7 +135,8 @@ impl MapBuilderConfig {
                 base.bisect_room_prob = 0.17;
             }
             MapStyle::MetroidFS => {
-                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 2;
+                base.bsp_config.region_split_factor =
+                    (REGION_SPLIT_FACTOR / 4) + (REGION_SPLIT_FACTOR / 2);
                 base.bsp_config.horizontal_region_prob = 0.75;
                 base.bsp_config.big_rect_area_cutoff = 14;
                 base.bsp_config.big_rect_survival_prob = 0.09;
@@ -154,7 +156,8 @@ impl MapBuilderConfig {
                 base.bisect_room_prob = 0.17;
             }
             MapStyle::MetroidSP => {
-                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 2;
+                base.bsp_config.region_split_factor =
+                    (REGION_SPLIT_FACTOR / 4) + (REGION_SPLIT_FACTOR / 2);
                 base.bsp_config.horizontal_region_prob = 0.75;
                 base.bsp_config.big_rect_area_cutoff = 14;
                 base.bsp_config.big_rect_survival_prob = 0.09;

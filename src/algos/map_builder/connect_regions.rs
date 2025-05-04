@@ -5,28 +5,20 @@ use std::collections::{HashMap, HashSet};
 
 impl MapBuilder {
     pub(super) fn connect_regions(regions: &mut [Map]) {
-        let mut region_map = regions
-            .iter_mut()
-            .enumerate()
-            .map(|(i, region)| (i, region))
-            .collect::<HashMap<_, _>>();
+        let mut region_map = regions.iter_mut().enumerate().collect::<HashMap<_, _>>();
 
         let mut regions_to_visit = vec![region_map.keys().cloned().next().unwrap()];
 
-        let mut visited_regions = HashSet::new();
+        let mut expanded_regions = HashSet::new();
+        expanded_regions.insert(regions_to_visit[0]);
+
         let mut region_links = Vec::new();
 
         while let Some(region_idx) = regions_to_visit.pop() {
-            if visited_regions.contains(&region_idx) {
-                continue;
-            }
-
-            visited_regions.insert(region_idx);
-
             let region = region_map.get(&region_idx).unwrap();
 
             for neighbour_idx in region_map.keys() {
-                if region_idx == *neighbour_idx || visited_regions.contains(neighbour_idx) {
+                if region_idx == *neighbour_idx || expanded_regions.contains(neighbour_idx) {
                     continue;
                 }
 
@@ -39,6 +31,7 @@ impl MapBuilder {
                 {
                     regions_to_visit.push(*neighbour_idx);
                     region_links.push((region_idx, *neighbour_idx));
+                    expanded_regions.insert(*neighbour_idx);
                 }
             }
         }
@@ -59,7 +52,6 @@ impl MapBuilder {
             .rooms
             .iter()
             .enumerate()
-            .map(|(i, room)| (i, room))
             .collect::<HashMap<_, _>>();
 
         let to_room_map = region_map
@@ -68,7 +60,6 @@ impl MapBuilder {
             .rooms
             .iter()
             .enumerate()
-            .map(|(i, room)| (i, room))
             .collect::<HashMap<_, _>>();
 
         let mut closest_distance = f32::MAX;

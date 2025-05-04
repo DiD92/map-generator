@@ -69,7 +69,7 @@ impl RoomDecorator for MetroidRoomDecorator {
             let mut min_nav_distance = u32::MAX;
 
             let modifier = match rng.random_range(0_u32..100) {
-                0..50 => {
+                0..30 => {
                     for save_cell in save_rooms.iter() {
                         let distance = save_cell.distance(&room_cell);
                         if distance < min_save_distance {
@@ -85,7 +85,7 @@ impl RoomDecorator for MetroidRoomDecorator {
                         Some(RoomModifier::Save)
                     }
                 }
-                50..71 => {
+                30..45 => {
                     for nav_cell in navigation_rooms.iter() {
                         let distance = nav_cell.distance(&room_cell);
                         if distance < min_nav_distance {
@@ -101,6 +101,7 @@ impl RoomDecorator for MetroidRoomDecorator {
                         Some(RoomModifier::Navigation)
                     }
                 }
+                45..60 => Some(RoomModifier::Item),
                 _ => None,
             };
 

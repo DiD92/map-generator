@@ -1,13 +1,13 @@
-use svg::{
-    Document,
-    node::element::{Path, Rectangle, path::Data},
-};
-
 use super::*;
 use crate::{
     algos::PolygonBuilder,
     constants::{MAP_SIZE_MARGIN, RECT_SIZE_MULTIPLIER},
     types::{Cell, Door, DoorModifier, Edge, Map, Rect, Room, RoomModifier},
+};
+
+use svg::{
+    Document,
+    node::element::{Path, Rectangle, path::Data},
 };
 
 #[derive(Debug, PartialEq)]

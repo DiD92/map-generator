@@ -118,12 +118,10 @@ impl BinarySpacePartitioning {
         let width = initial_rect.width;
         let height = initial_rect.height;
 
-        let min_sizes = region_count as u32;
-
         while rect_queue.len() < region_count as usize {
             let rect = rect_queue.pop_front().unwrap();
 
-            if rect.width < width / min_sizes || rect.height < height / min_sizes {
+            if rect.width < width / region_count || rect.height < height / region_count {
                 rect_queue.push_back(rect);
                 continue;
             }

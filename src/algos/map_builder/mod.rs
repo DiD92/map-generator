@@ -114,7 +114,7 @@ impl MapBuilderConfig {
                 base.bisect_room_prob = 0.17;
             }
             MapStyle::MetroidZM => {
-                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 1;
+                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 2;
                 base.bsp_config.horizontal_region_prob = 0.75;
                 base.bsp_config.big_rect_area_cutoff = 14;
                 base.bsp_config.big_rect_survival_prob = 0.09;
@@ -134,7 +134,7 @@ impl MapBuilderConfig {
                 base.bisect_room_prob = 0.17;
             }
             MapStyle::MetroidFS => {
-                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 1;
+                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 2;
                 base.bsp_config.horizontal_region_prob = 0.75;
                 base.bsp_config.big_rect_area_cutoff = 14;
                 base.bsp_config.big_rect_survival_prob = 0.09;
@@ -154,7 +154,7 @@ impl MapBuilderConfig {
                 base.bisect_room_prob = 0.17;
             }
             MapStyle::MetroidSP => {
-                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 1;
+                base.bsp_config.region_split_factor = REGION_SPLIT_FACTOR / 2;
                 base.bsp_config.horizontal_region_prob = 0.75;
                 base.bsp_config.big_rect_area_cutoff = 14;
                 base.bsp_config.big_rect_survival_prob = 0.09;

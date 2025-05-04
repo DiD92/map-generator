@@ -1,16 +1,18 @@
+use super::*;
+use crate::{
+    algos::PolygonBuilder,
+    constants::RECT_SIZE_MULTIPLIER,
+    types::{Cell, Direction, Door, DoorModifier, Edge, Map, Room, RoomModifier},
+};
+
 use std::collections::{HashMap, HashSet};
 
 use svg::{
     Document,
-    node::element::{Path, path::Data},
+    node::element::{Path, Polygon, path::Data},
 };
 
-use super::*;
-use crate::{
-    algos::PolygonBuilder,
-    constants::{MAP_SIZE_MARGIN, RECT_SIZE_MULTIPLIER},
-    types::{Cell, Direction, Door, DoorModifier, Edge, Map, Room, RoomModifier},
-};
+mod region_connector;
 
 const REGION_SEPRATION: u32 = RECT_SIZE_MULTIPLIER * 8;
 
@@ -23,10 +25,6 @@ pub(super) enum MetroidMapDrawer {
 
 impl MapDrawer for MetroidMapDrawer {
     fn draw(&self, maps: Vec<Map>, config: &DrawConfig) -> svg::Document {
-        for map in maps.iter() {
-            println!("Map: {:?}", map.rooms.len());
-        }
-
         let (region_matrix, offset_map) = Self::get_regions_matrix(&maps);
         println!("Region matrix: [{}x{}]", region_matrix.0, region_matrix.1);
 
@@ -49,19 +47,23 @@ impl MapDrawer for MetroidMapDrawer {
             .set("width", document_width)
             .set("height", document_height);
 
-        for paths in maps.iter().map(|map| {
+        for (paths, polygons) in maps.iter().map(|map| {
             let region_origin = map.origin_rect.origin;
             let (region_col_offset, region_row_offset) = offset_map[&region_origin];
 
             let col_offset = (region_col_offset * REGION_SEPRATION) + (REGION_SEPRATION / 2);
             let row_offset = (region_row_offset * REGION_SEPRATION) + (REGION_SEPRATION / 2);
 
-            Self::draw_region(
+            self.draw_region(
                 map, col_offset, row_offset, room_color, door_color, wall_color,
             )
         }) {
             for path in paths {
                 document = document.add(path);
+            }
+
+            for polygon in polygons {
+                document = document.add(polygon);
             }
         }
 
@@ -119,18 +121,33 @@ impl MetroidMapDrawer {
     }
 
     fn draw_region(
+        &self,
         map: &Map,
         col_offset: u32,
         row_offset: u32,
         room_color: &str,
         door_color: &str,
         wall_color: &str,
-    ) -> Vec<Path> {
-        let mut path_vec = map
-            .rooms
-            .iter()
-            .map(|room| Self::draw_room(room, col_offset, row_offset, room_color, wall_color))
-            .collect::<Vec<_>>();
+    ) -> (Vec<Path>, Vec<Polygon>) {
+        let mut path_vec = Vec::new();
+        let mut polygon_vec = Vec::new();
+
+        let connection_drawer = region_connector::RegionConnectorDrawerFactory::drawer_for(self);
+
+        for room in map.rooms.iter() {
+            path_vec.push(Self::draw_room(
+                room, col_offset, row_offset, room_color, wall_color,
+            ));
+
+            if let Some(RoomModifier::RegionConnection(_)) = room.modifier {
+                let (path, door, polygon) = connection_drawer.draw_region_connector(
+                    room, col_offset, row_offset, room_color, wall_color, door_color,
+                );
+                path_vec.push(path);
+                path_vec.push(door);
+                polygon_vec.push(polygon);
+            }
+        }
 
         for door_path in map
             .doors
@@ -140,7 +157,7 @@ impl MetroidMapDrawer {
             path_vec.push(door_path);
         }
 
-        path_vec
+        (path_vec, polygon_vec)
     }
 
     fn draw_room(

@@ -9,7 +9,7 @@ use rand::Rng;
 use rayon::prelude::*;
 
 #[derive(Debug, Clone, Copy)]
-pub struct BinarySpacePartitioningConfig {
+pub(crate) struct BinarySpacePartitioningConfig {
     pub region_split_factor: u32,
     // The proportion of regions that are going to be PreferHorizontal
     // over PreferVertical. The Standard and Chaotic modifiers are
@@ -57,7 +57,7 @@ impl Default for BinarySpacePartitioningConfig {
     }
 }
 
-pub struct BinarySpacePartitioning;
+pub(crate) struct BinarySpacePartitioning;
 
 impl BinarySpacePartitioning {
     pub fn generate_and_trim_partitions(

@@ -539,6 +539,7 @@ impl Room {
 }
 
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+#[cfg_attr(feature = "server", derive(PartialOrd, Ord, Hash))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Serialize)]
 pub enum MapStyle {
     #[default]
@@ -549,6 +550,22 @@ pub enum MapStyle {
     MetroidZM,
     MetroidFS,
     MetroidSP,
+}
+
+#[cfg(feature = "server")]
+impl MapStyle {
+    pub fn try_from_str(style: &str) -> anyhow::Result<Self> {
+        Ok(match style {
+            "castlevania-sotn" => MapStyle::CastlevaniaSOTN,
+            "castlevania-aos" => MapStyle::CastlevaniaAOS,
+            "castlevania-cotn" => MapStyle::CastlevaniaCOTN,
+            "castlevania-hod" => MapStyle::CastlevaniaHOD,
+            "metroid-zm" => MapStyle::MetroidZM,
+            "metroid-fs" => MapStyle::MetroidFS,
+            "metroid-sp" => MapStyle::MetroidSP,
+            _ => return Err(anyhow::anyhow!("Unknown map style: {}", style)),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

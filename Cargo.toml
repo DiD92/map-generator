@@ -4,15 +4,23 @@ rust-version = "1.86"
 
 [workspace]
 resolver = "3"
-members = ["generator-core", "generator-cli"]
+members = ["generator-core", "generator-cli", "generator-server"]
 
 [workspace.dependencies]
+axum = { version = "0.8", default-features = false }
 anyhow = { version = "1.0", default-features = false }
 clap = { version = "4.0", default-features = false }
+derive_more = { version = "2.0", default-features = false }
 rand = { version = "0.9", default-features = false }
 rayon = { version = "1.10", default-features = false }
 serde = { version = "1.0", default-features = false }
 svg = { version = "0.18.0", default-features = false }
+thiserror = { version = "2.0", default-features = false }
+tokio = { version = "1.0", default-features = false }
+tower-http = { version = "0.6", default-features = false }
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false }
+uuid = { version = "1.0", default-features = false }
 
 generator-core = { path = "generator-core", default-features = false }
 generator-cli = { path = "generator-cli", default-features = false }

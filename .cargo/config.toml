@@ -1,3 +1,6 @@
 [alias]
 build-cli-debug = "build --bin generator-cli"
 build-cli-release = "build --bin generator-cli --release"
+
+build-server-debug = "build --bin generator-server"
+build-server-release = "build --bin generator-server --release"

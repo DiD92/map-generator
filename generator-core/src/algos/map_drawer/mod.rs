@@ -20,8 +20,8 @@ const YELLOW: &str = "#f8f800";
 const STROKE_WIDTH: u32 = 12;
 
 pub(crate) struct DrawConfig {
-    pub(crate) canvas_width: u32,
-    pub(crate) canvas_height: u32,
+    pub canvas_width: u32,
+    pub canvas_height: u32,
 }
 
 pub(crate) trait MapDrawer {
@@ -31,7 +31,7 @@ pub(crate) trait MapDrawer {
 pub(crate) struct MapDrawerFactory;
 
 impl MapDrawerFactory {
-    pub(crate) fn create_drawer(map_style: MapStyle) -> Box<dyn MapDrawer> {
+    pub fn create_drawer(map_style: MapStyle) -> Box<dyn MapDrawer> {
         match map_style {
             MapStyle::CastlevaniaSOTN => {
                 Box::new(castlevania::CastlevaniaMapDrawer::CastlevaniaSOTN)

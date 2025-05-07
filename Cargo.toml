@@ -1,15 +1,21 @@
-[package]
-name = "map-generator"
-version = "0.1.0"
+[workspace.package]
 edition = "2024"
+rust-version = "1.86"
 
-[dependencies]
-anyhow = { version = "1.0" }
-clap = { version = "4.0", features = ["derive"]}
-rand = { version = "0.9" }
-rayon = { version = "1.10" }
-serde = { version = "1.0", features = ["derive"]}
-svg = { version = "0.18.0" }
+[workspace]
+resolver = "3"
+members = ["generator-core", "generator-cli"]
+
+[workspace.dependencies]
+anyhow = { version = "1.0", default-features = false }
+clap = { version = "4.0", default-features = false }
+rand = { version = "0.9", default-features = false }
+rayon = { version = "1.10", default-features = false }
+serde = { version = "1.0", default-features = false }
+svg = { version = "0.18.0", default-features = false }
+
+generator-core = { path = "generator-core", default-features = false }
+generator-cli = { path = "generator-cli", default-features = false }
 
 [profile.release]
 opt-level = 3

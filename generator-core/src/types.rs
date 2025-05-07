@@ -11,7 +11,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct Vector2 {
+pub(crate) struct Vector2 {
     pub x: f32,
     pub y: f32,
 }
@@ -35,7 +35,7 @@ impl Display for Vector2 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Cell {
+pub(crate) struct Cell {
     pub col: u32,
     pub row: u32,
 }
@@ -160,7 +160,7 @@ impl From<Cell> for (u32, u32) {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Edge {
+pub(crate) struct Edge {
     pub from: Cell,
     pub to: Cell,
 }
@@ -229,13 +229,13 @@ impl Hash for Edge {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SplitAxis {
+pub(crate) enum SplitAxis {
     Horizontal,
     Vertical,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RectModifier {
+pub(crate) enum RectModifier {
     Standard,
     PreferHorizontal,
     PreferVertical,
@@ -243,7 +243,7 @@ pub enum RectModifier {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RectRegion {
+pub(crate) struct RectRegion {
     pub rect: Rect,
     pub modifier: RectModifier,
 }
@@ -255,7 +255,7 @@ impl Display for RectRegion {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MapRegion {
+pub(crate) struct MapRegion {
     pub origin_rect: Rect,
     pub rooms: RoomTable,
     pub neighbours: NeighbourTable,
@@ -268,7 +268,7 @@ impl Display for MapRegion {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Rect {
+pub(crate) struct Rect {
     pub origin: Cell,
     pub width: u32,
     pub height: u32,
@@ -406,7 +406,7 @@ impl Rect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DoorModifier {
+pub(crate) enum DoorModifier {
     Open,
     Secret,
     Locked,
@@ -414,7 +414,7 @@ pub enum DoorModifier {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Door {
+pub(crate) struct Door {
     pub from: Cell,
     pub to: Cell,
     pub modifier: DoorModifier,
@@ -431,7 +431,7 @@ impl Door {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Direction {
+pub(crate) enum Direction {
     North,
     South,
     East,
@@ -457,7 +457,7 @@ impl Direction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
-pub enum RoomModifier {
+pub(crate) enum RoomModifier {
     #[default]
     None,
     Connector,
@@ -467,13 +467,13 @@ pub enum RoomModifier {
     RegionConnection(Direction),
 }
 
-pub type RoomTable = HashMap<RoomId, Room>;
-pub type NeighbourTable = HashMap<RoomId, HashSet<RoomId>>;
+pub(crate) type RoomTable = HashMap<RoomId, Room>;
+pub(crate) type NeighbourTable = HashMap<RoomId, HashSet<RoomId>>;
 
-pub type RoomId = usize;
+pub(crate) type RoomId = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Room {
+pub(crate) struct Room {
     pub cells: Vec<Cell>,
     pub modifier: Option<RoomModifier>,
 }
@@ -538,7 +538,8 @@ impl Room {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Serialize, clap::ValueEnum)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Serialize)]
 pub enum MapStyle {
     #[default]
     CastlevaniaSOTN,
@@ -551,7 +552,7 @@ pub enum MapStyle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Map {
+pub(crate) struct Map {
     pub origin_rect: Rect,
     pub rooms: Vec<Room>,
     pub doors: Vec<Door>,

@@ -2,7 +2,7 @@ use crate::types::{Cell, Edge, Room};
 
 use std::collections::HashSet;
 
-pub struct PolygonBuilder;
+pub(crate) struct PolygonBuilder;
 
 impl PolygonBuilder {
     pub fn build_for(room: &Room) -> (HashSet<Cell>, HashSet<Edge>) {

@@ -11,7 +11,7 @@ mod merge_rooms;
 mod reconnect_rooms;
 mod room_decorator;
 
-pub struct MapBuilderConfig {
+pub(crate) struct MapBuilderConfig {
     pub bsp_config: bsp::BinarySpacePartitioningConfig,
     // Should we merge the regions after generating their rooms?
     pub merge_regions: bool,
@@ -182,7 +182,7 @@ impl MapBuilderConfig {
     }
 }
 
-pub struct MapBuilder {
+pub(crate) struct MapBuilder {
     pub cols: u32,
     pub rows: u32,
 }

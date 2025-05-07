@@ -1,0 +1,12 @@
+[package]
+name = "generator-cli"
+version = "0.1.0"
+
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["std", "help"] }
+svg = { workspace = true }
+
+generator-core = { workspace = true, features = ["cli"] }

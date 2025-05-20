@@ -1,5 +1,7 @@
 # Map Generator
 
+![Sample minimap](./images/readme-sample.svg)
+
 Map Generator is a Rust-based project designed to generate and serve maps. It is composed of three main components:
 
 1. **generator-core**: Contains the core logic and algorithms for map generation.

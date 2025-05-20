@@ -2,6 +2,7 @@ use crate::{constants::REGION_SPLIT_FACTOR, types::*};
 
 use anyhow::Result;
 use rayon::prelude::*;
+use tracing::event;
 
 mod add_doors;
 mod bsp;
@@ -299,7 +300,8 @@ impl MapBuilder {
             .fold(0_usize, |acc, map| acc + map.doors.len());
 
         let build_end = std::time::SystemTime::now();
-        println!(
+        event!(
+            tracing::Level::DEBUG,
             "Built map with {} rooms and {} doors in {:?}ms",
             built_rooms,
             built_doors,

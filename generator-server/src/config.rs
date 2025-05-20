@@ -15,7 +15,8 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> anyhow::Result<Config> {
         let server_port = load_env(SERVER_PORT_KEY)?;
-        let database_url = load_env(DATABASE_URL_KEY)?;
+        // For now we are not using the database URL, but we can load it for future use
+        let database_url = load_env(DATABASE_URL_KEY).unwrap_or_default();
 
         Ok(Config {
             server_port,

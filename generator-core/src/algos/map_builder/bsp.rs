@@ -7,6 +7,7 @@ use crate::{
 
 use rand::Rng;
 use rayon::prelude::*;
+use tracing::event;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BinarySpacePartitioningConfig {
@@ -76,9 +77,13 @@ impl BinarySpacePartitioning {
         };
 
         let region_count = u32::max(initial_rect.area() / config.region_split_factor, 2);
-        println!(
+
+        event!(
+            tracing::Level::DEBUG,
             "Splitting inital rect of {}x{} into {} regions",
-            width, height, region_count
+            width,
+            height,
+            region_count
         );
 
         let regions = Self::generate_regions(initial_rect, region_count, &config);
@@ -87,7 +92,9 @@ impl BinarySpacePartitioning {
             regions.iter().map(|r| r.rect.area()).sum::<u32>() / regions.len() as u32;
         let min_region_area = regions.iter().map(|r| r.rect.area()).min().unwrap_or(0);
         let max_region_area = regions.iter().map(|r| r.rect.area()).max().unwrap_or(0);
-        println!(
+
+        event!(
+            tracing::Level::DEBUG,
             "Region area sizes: {}±{}",
             avg_region_area,
             max_region_area - min_region_area
@@ -202,9 +209,13 @@ impl BinarySpacePartitioning {
         }
         .clamp(0.1, 0.9);
 
-        println!(
+        event!(
+            tracing::Level::DEBUG,
             "Splitting region: {} | HF:[{}] - WF:[{}] - HS:[{}]",
-            region, height_factor_cutoff, width_factor_cutoff, horizontal_split_prob
+            region,
+            height_factor_cutoff,
+            width_factor_cutoff,
+            horizontal_split_prob
         );
 
         while let Some(rect) = rect_stack.pop() {

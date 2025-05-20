@@ -5,6 +5,7 @@ use std::{collections::HashSet, sync::Mutex};
 
 use rand::Rng;
 use rayon::prelude::*;
+use tracing::event;
 
 impl MapBuilder {
     pub(super) fn merge_random_rooms(map_region: &mut MapRegion, config: &MapBuilderConfig) {
@@ -38,7 +39,7 @@ impl MapBuilder {
                         guard.insert(*i);
                         guard.insert(selected_neighbour);
                     } else {
-                        println!("Failed to lock rooms_to_merge mutex");
+                        event!(tracing::Level::ERROR, "Failed to lock rooms_to_merge mutex");
                         return None;
                     }
 

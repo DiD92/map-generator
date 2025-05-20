@@ -12,7 +12,7 @@ async fn main() -> anyhow::Result<()> {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
-    let repository = outbound::repositories::NullRepository;
+    let repository = outbound::repositories::FileSystemRepository;
     let metrics = outbound::metrics::NullMetrics;
     let notifier = outbound::notifiers::NullNotifier;
     let map_service = domain::service::Service::new(repository, metrics, notifier);

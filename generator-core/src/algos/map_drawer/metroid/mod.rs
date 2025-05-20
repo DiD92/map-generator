@@ -14,6 +14,7 @@ use svg::{
     Document,
     node::element::{Path, Polygon, path::Data},
 };
+use tracing::event;
 
 mod door_drawer;
 mod region_connector;
@@ -30,7 +31,13 @@ pub(super) enum MetroidMapDrawer {
 impl MapDrawer for MetroidMapDrawer {
     fn draw(&self, maps: Vec<Map>, config: &DrawConfig) -> svg::Document {
         let (region_matrix, offset_map) = Self::get_regions_matrix(&maps);
-        println!("Region matrix: [{}x{}]", region_matrix.0, region_matrix.1);
+
+        event!(
+            tracing::Level::DEBUG,
+            "Region matrix: [{}x{}]",
+            region_matrix.0,
+            region_matrix.1
+        );
 
         let document_width = (config.canvas_width * RECT_SIZE_MULTIPLIER)
             + REGION_SEPRATION
@@ -46,7 +53,12 @@ impl MapDrawer for MetroidMapDrawer {
             MetroidMapDrawer::Super => (LIGHT_BLUE, LIGHT_BLUE, LIGHT_GRAY),
         };
 
-        println!("Document size: [{}x{}]", document_width, document_height);
+        event!(
+            tracing::Level::DEBUG,
+            "Document size: [{}x{}]",
+            document_width,
+            document_height
+        );
         let mut document = Document::new()
             .set("width", document_width)
             .set("height", document_height);

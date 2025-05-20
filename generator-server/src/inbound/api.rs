@@ -48,6 +48,7 @@ impl From<CreateMapError> for ApiError {
     fn from(e: CreateMapError) -> Self {
         match e {
             CreateMapError::Unknown(cause) => Self::InternalServerError(cause.to_string()),
+            CreateMapError::FileSystemError(error) => Self::InternalServerError(error.to_string()),
         }
     }
 }

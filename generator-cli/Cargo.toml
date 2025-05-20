@@ -8,5 +8,6 @@ rust-version.workspace = true
 [dependencies]
 clap = { workspace = true, features = ["std", "help"] }
 svg = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
 
 generator-core = { workspace = true, features = ["cli"] }

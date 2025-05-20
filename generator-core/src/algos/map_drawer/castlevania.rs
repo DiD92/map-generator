@@ -9,6 +9,7 @@ use svg::{
     Document,
     node::element::{Path, Rectangle, path::Data},
 };
+use tracing::event;
 
 #[derive(Debug, PartialEq)]
 pub(super) enum CastlevaniaMapDrawer {
@@ -23,7 +24,12 @@ impl MapDrawer for CastlevaniaMapDrawer {
         let document_width = (config.canvas_width * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN;
         let document_height = (config.canvas_height * RECT_SIZE_MULTIPLIER) + MAP_SIZE_MARGIN;
 
-        println!("Document size: [{}x{}]", document_width, document_height);
+        event!(
+            tracing::Level::DEBUG,
+            "Document size: [{}x{}]",
+            document_width,
+            document_height
+        );
         let mut document = Document::new()
             .set("width", document_width)
             .set("height", document_height);
@@ -196,7 +202,12 @@ impl CastlevaniaMapDrawer {
                 data = data.move_to::<(u32, u32)>((x, from_y));
                 data = data.line_to::<(u32, u32)>((x, to_y));
             } else {
-                println!("Door axis is not a straigt line!");
+                event!(
+                    tracing::Level::ERROR,
+                    "Door axis is not a straight line! from: {:?}, to: {:?}",
+                    from,
+                    to
+                );
             }
         } else if from.row != to.row {
             if from.col == to.col {
@@ -218,10 +229,20 @@ impl CastlevaniaMapDrawer {
                 data = data.move_to::<(u32, u32)>((from_x, y));
                 data = data.line_to::<(u32, u32)>((to_x, y));
             } else {
-                println!("Door axis is not a straigt line!");
+                event!(
+                    tracing::Level::ERROR,
+                    "Door axis is not a straight line! from: {:?}, to: {:?}",
+                    from,
+                    to
+                );
             }
         } else {
-            println!("Door axis is a point!");
+            event!(
+                tracing::Level::ERROR,
+                "Door axis is not a straight line! from: {:?}, to: {:?}",
+                from,
+                to
+            );
         }
 
         data = data.close();

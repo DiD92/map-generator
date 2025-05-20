@@ -100,4 +100,6 @@ pub enum CreateMapError {
     #[error(transparent)]
     Unknown(#[from] anyhow::Error),
     // to be extended as new error scenarios are introduced
+    #[error("Failed to persist map: {0}")]
+    FileSystemError(#[from] std::io::Error),
 }

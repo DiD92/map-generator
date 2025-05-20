@@ -4,6 +4,7 @@ use std::{fs::create_dir as create_generated_dir, path::Path};
 
 use clap::Parser;
 use svg::save as save_as_svg;
+use tracing::event;
 
 #[derive(Parser, Debug)]
 #[command(version, long_about = None)]
@@ -37,16 +38,24 @@ fn main() {
     match Path::new("generated").try_exists() {
         Ok(false) => {
             create_generated_dir("generated").expect("Failed to create 'generated' directory!");
-            println!("Directory 'generated' created.");
+            event!(tracing::Level::INFO, "Directory 'generated' created.");
         }
         Err(e) => {
-            eprintln!("Error checking for 'generated' directory: {}", e);
+            event!(
+                tracing::Level::ERROR,
+                "Error creating 'generated' directory: {}",
+                e
+            );
             return;
         }
         _ => {}
     }
 
-    println!("Saving map as SVG to: {}", map_filename);
+    event!(
+        tracing::Level::INFO,
+        "Saving map as SVG to: {}",
+        map_filename
+    );
 
     save_as_svg(map_filename, &map_data).expect("Failed to save SVG file!");
 }

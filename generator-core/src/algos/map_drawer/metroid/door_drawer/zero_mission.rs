@@ -6,6 +6,7 @@ use crate::{
 };
 
 use svg::node::element::{Path, path::Data};
+use tracing::event;
 
 pub(super) struct ZeroMissionDoorDrawer;
 
@@ -41,7 +42,12 @@ impl DoorDrawer for ZeroMissionDoorDrawer {
                 data = data.move_to::<(u32, u32)>((x, from_y));
                 data = data.line_to::<(u32, u32)>((x, to_y));
             } else {
-                println!("Door axis is not a straigt line!");
+                event!(
+                    tracing::Level::ERROR,
+                    "Door axis is not a straight line! from: {:?}, to: {:?}",
+                    from,
+                    to
+                );
             }
         } else if from.row != to.row {
             if from.col == to.col {
@@ -54,10 +60,20 @@ impl DoorDrawer for ZeroMissionDoorDrawer {
                 data = data.move_to::<(u32, u32)>((from_x, y));
                 data = data.line_to::<(u32, u32)>((to_x, y));
             } else {
-                println!("Door axis is not a straigt line!");
+                event!(
+                    tracing::Level::ERROR,
+                    "Door axis is not a straight line! from: {:?}, to: {:?}",
+                    from,
+                    to
+                );
             }
         } else {
-            println!("Door axis is a point!");
+            event!(
+                tracing::Level::ERROR,
+                "Door axis is a point! from: {:?}, to: {:?}",
+                from,
+                to
+            );
         }
 
         data = data.close();

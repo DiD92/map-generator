@@ -37,7 +37,7 @@ impl MapDrawerFactory {
                 Box::new(castlevania::CastlevaniaMapDrawer::CastlevaniaSOTN)
             }
             MapStyle::CastlevaniaAOS => Box::new(castlevania::CastlevaniaMapDrawer::CastlevaniaAOS),
-            MapStyle::CastlevaniaCOTN => {
+            MapStyle::CastlevaniaCOTM => {
                 Box::new(castlevania::CastlevaniaMapDrawer::CastlevaniaCOTN)
             }
             MapStyle::CastlevaniaHOD => Box::new(castlevania::CastlevaniaMapDrawer::CastlevaniaHOD),

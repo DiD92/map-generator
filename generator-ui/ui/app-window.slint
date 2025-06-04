@@ -1,34 +1,126 @@
-import { Button, VerticalBox } from "std-widgets.slint";
+import { Button, VerticalBox, Slider, ComboBox, SpinBox, HorizontalBox } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     title: "Map Generator";
 
-    width: 800px;
-    height: 600px;
+    width: 80rem;
+    height: 45rem;
 
     in property <image> map;
 
-    callback request-new-map();
+    out property <int> cols;
+    out property <int> rows;
+    out property <string> style;
 
-    VerticalLayout {
+    callback request-new-map();
+    callback request-save-map();
+
+    HorizontalBox {
         width: parent.width;
         height: parent.height;
 
-        spacing: 10px;
-        padding: 10px;
+        spacing: 1rem;
+        padding: 0.5rem;
 
-        alignment: end;
-        
-        Image {
-            source: root.map;
+        alignment: space-between;
+
+        VerticalBox {
+            VerticalBox {
+                alignment: start;
+                spacing: 0.5rem;
+
+                col_box := SpinBox {
+                    minimum: 12;
+                    horizontal-stretch: 0;
+                    maximum: 64;
+
+                    value: 32;
+                    vertical-stretch: 0;
+                    visible: true;
+
+                    init() => {
+                        root.cols = self.value;
+                    }
+
+                    edited(value) => {
+                        root.cols = value;
+                    }
+                }
+
+                row_box := SpinBox {
+                    minimum: 12;
+                    maximum: 64;
+
+                    value: 24;
+
+                    init() => {
+                        root.rows = self.value;
+                    }
+
+                    edited(value) => {
+                        root.rows = value;
+                    }
+                }
+
+                style_selector := ComboBox {
+                    model: [
+                        "Symphony of the Night",
+                        "Aria of Sorrow",
+                        "Circle of the Moon",
+                        "Harmony of Dissonance"
+                    ];
+                    current-index: 0;
+                    horizontal-stretch: 1;
+
+                    init() => {
+                        root.style = self.model[self.current-index];
+                    }
+
+                    selected(text) => {
+                        if text == "Symphony of the Night" {
+                            root.style = "castlevania-sotn";
+                        } else if text == "Aria of Sorrow" {
+                            root.style = "castlevania-aos";
+                        } else if text == "Circle of the Moon" {
+                            root.style = "castlevania-cotm";
+                        } else if text == "Harmony of Dissonance" {
+                            root.style = "castlevania-hod";
+                        } else {
+                            root.style = text;
+                        }
+                    }
+                }
+            }
+
+            VerticalBox {
+                alignment: end;
+                spacing: 0.5rem;
+
+                Button {
+                    colorize-icon: false;
+                    text: "Generate map";
+                    clicked => {
+                        root.request-new-map();
+                    }
+                }
+
+                Button {
+                    text: "Save map";
+                    vertical-stretch: 0;
+                    enabled: false;
+                    clicked => {
+                        root.request-save-map();
+                    }
+                }
+            }
         }
 
-        Button {
-            text: "Generate map";
-            
-            clicked => {
-                root.request-new-map();
-            }
+        img := Image {
+            width: parent.width - 20rem;
+            height: parent.height - 1rem;
+            image-fit: contain;
+
+            source: root.map;
         }
     }
 }

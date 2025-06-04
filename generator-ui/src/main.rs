@@ -17,7 +17,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         move || {
             let ui = ui_handle.unwrap();
 
-            let map = create_map(48, 32, MapStyle::CastlevaniaSOTN);
+            let cols = ui.get_cols() as u32;
+            let rows = ui.get_rows() as u32;
+
+            let style = match MapStyle::try_from_str(&ui.get_style()) {
+                Ok(style) => style,
+                Err(err) => {
+                    println!("Error parsing map style from UI: {}", err);
+                    MapStyle::CastlevaniaSOTN
+                }
+            };
+
+            let map = create_map(cols, rows, style);
 
             let map_str = map.to_string();
 
@@ -51,6 +62,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             ui.set_map(image);
         }
     });
+
+    ui.on_request_save_map(|| {});
 
     ui.run()?;
 

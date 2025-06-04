@@ -15,7 +15,7 @@ impl RoomDecoratorFactory {
         match style {
             MapStyle::CastlevaniaSOTN => Box::new(castlevania::CastlevaniaRoomDectorator),
             MapStyle::CastlevaniaAOS => Box::new(castlevania::CastlevaniaRoomDectorator),
-            MapStyle::CastlevaniaCOTN => Box::new(castlevania::CastlevaniaRoomDectorator),
+            MapStyle::CastlevaniaCOTM => Box::new(castlevania::CastlevaniaRoomDectorator),
             MapStyle::CastlevaniaHOD => Box::new(castlevania::CastlevaniaRoomDectorator),
             MapStyle::MetroidZM => Box::new(metroid::MetroidRoomDecorator::ZeroMission),
             MapStyle::MetroidFS => Box::new(metroid::MetroidRoomDecorator::Fusion),

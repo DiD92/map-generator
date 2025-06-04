@@ -539,26 +539,26 @@ impl Room {
 }
 
 #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
-#[cfg_attr(feature = "server", derive(PartialOrd, Ord, Hash))]
+#[cfg_attr(feature = "style-ord-hash", derive(PartialOrd, Ord, Hash))]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Serialize)]
 pub enum MapStyle {
     #[default]
     CastlevaniaSOTN,
     CastlevaniaAOS,
-    CastlevaniaCOTN,
+    CastlevaniaCOTM,
     CastlevaniaHOD,
     MetroidZM,
     MetroidFS,
     MetroidSP,
 }
 
-#[cfg(feature = "server")]
+#[cfg(feature = "style-try-from-str")]
 impl MapStyle {
     pub fn try_from_str(style: &str) -> anyhow::Result<Self> {
         Ok(match style {
             "castlevania-sotn" => MapStyle::CastlevaniaSOTN,
             "castlevania-aos" => MapStyle::CastlevaniaAOS,
-            "castlevania-cotn" => MapStyle::CastlevaniaCOTN,
+            "castlevania-cotm" => MapStyle::CastlevaniaCOTM,
             "castlevania-hod" => MapStyle::CastlevaniaHOD,
             "metroid-zm" => MapStyle::MetroidZM,
             "metroid-fs" => MapStyle::MetroidFS,

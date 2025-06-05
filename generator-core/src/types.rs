@@ -563,7 +563,7 @@ impl MapStyle {
             "metroid-zm" => MapStyle::MetroidZM,
             "metroid-fs" => MapStyle::MetroidFS,
             "metroid-sp" => MapStyle::MetroidSP,
-            _ => return Err(anyhow::anyhow!("Unknown map style: {}", style)),
+            _ => return Err(anyhow::anyhow!(r#"Unknown map style: "{}""#, style)),
         })
     }
 }

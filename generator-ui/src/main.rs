@@ -11,23 +11,12 @@ slint::include_modules!();
 
 fn main() -> Result<(), Box<dyn Error>> {
     let ui = AppWindow::new()?;
+    let ui_handle = ui.as_weak();
 
-    ui.on_request_new_map({
-        let ui_handle = ui.as_weak();
-        move || {
-            let ui = ui_handle.unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
 
-            let cols = ui.get_cols() as u32;
-            let rows = ui.get_rows() as u32;
-
-            let style = match MapStyle::try_from_str(&ui.get_style()) {
-                Ok(style) => style,
-                Err(err) => {
-                    println!("Error parsing map style from UI: {}", err);
-                    MapStyle::CastlevaniaSOTN
-                }
-            };
-
+    let worker_handle = std::thread::spawn(move || {
+        while let Ok((cols, rows, style)) = rx.recv() {
             let map = create_map(cols, rows, style);
 
             let map_str = map.to_string();
@@ -57,15 +46,46 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap);
 
-            let image = Image::from_rgba8_premultiplied(pixel_buffer);
+            let _ = ui_handle.upgrade_in_event_loop(move |handle| {
+                let image = Image::from_rgba8_premultiplied(pixel_buffer);
+                handle.set_map(image);
+                handle.invoke_enable_generate_button();
+            });
+        }
+    });
 
-            ui.set_map(image);
+    let ui_handle = ui.as_weak();
+    ui.on_request_new_map({
+        move || {
+            let ui = ui_handle.unwrap();
+
+            let cols = ui.get_cols() as u32;
+            let rows = ui.get_rows() as u32;
+
+            let style = match MapStyle::try_from_str(&ui.get_style_code()) {
+                Ok(style) => style,
+                Err(err) => {
+                    println!("Error parsing map style from UI: {}", err);
+                    MapStyle::CastlevaniaSOTN
+                }
+            };
+
+            tx.send((cols, rows, style)).unwrap_or_else(|err| {
+                println!("Error sending message to thread: {}", err);
+            });
         }
     });
 
     ui.on_request_save_map(|| {});
 
     ui.run()?;
+
+    // We manually drop the UI to ensure the worker thread can finish cleanly.
+    drop(ui);
+
+    worker_handle.join().unwrap_or_else(|err| {
+        println!("Error joining worker thread: {:?}", err);
+    });
 
     Ok(())
 }

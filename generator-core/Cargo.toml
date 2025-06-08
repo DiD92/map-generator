@@ -16,4 +16,5 @@ tracing = { workspace = true, features = ["std"] }
 
 [features]
 cli = ["clap/derive"]
-server = []
+style-ord-hash = []
+style-try-from-str = []

@@ -80,7 +80,7 @@ impl MapBuilderConfig {
                 base.repeat_small_room_merge_prob = 0.45;
                 base.bisect_room_prob = 0.15;
             }
-            MapStyle::CastlevaniaCOTN => {
+            MapStyle::CastlevaniaCOTM => {
                 base.bsp_config.horizontal_region_prob = 0.1;
                 base.bsp_config.big_rect_area_cutoff = 12;
                 base.bsp_config.big_rect_survival_prob = 0.15;

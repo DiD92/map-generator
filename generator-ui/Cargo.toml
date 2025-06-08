@@ -1,0 +1,17 @@
+[package]
+name = "generator-ui"
+version = "0.1.0"
+
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+resvg = { workspace = true, default-features = true }
+slint = { workspace = true, default-features = true }
+tiny-skia = { workspace = true, default-features = true }
+usvg = { workspace = true, default-features = true }
+
+generator-core = { workspace = true, features = ["style-try-from-str"] }
+
+[build-dependencies]
+slint-build = { workspace = true, default-features = true }

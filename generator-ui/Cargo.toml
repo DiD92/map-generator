@@ -10,6 +10,7 @@ resvg = { workspace = true, default-features = true }
 slint = { workspace = true, default-features = true }
 tiny-skia = { workspace = true, default-features = true }
 usvg = { workspace = true, default-features = true }
+svg = { workspace = true }
 
 generator-core = { workspace = true, features = ["style-try-from-str"] }
 

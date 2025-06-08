@@ -46,7 +46,7 @@ To start the server run:
 cargo run --bin generator-server
 ```
 
-The server will start and listen on the port specified in the environment configuration. 
+The server will start and listen on the port specified in the environment configuration.
 
 #### Example query:
 ```bash

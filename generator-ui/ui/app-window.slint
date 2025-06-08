@@ -3,21 +3,26 @@ import { Button, VerticalBox, Slider, ComboBox, SpinBox, HorizontalBox } from "s
 export component AppWindow inherits Window {
     title: "Map Generator";
 
-    width: 80rem;
-    height: 45rem;
+    max-width: 80rem;
+    min-height: 45rem;
 
     in property <image> map;
 
-    out property <int> cols;
-    out property <int> rows;
-    out property <string> style_code;
+    property <int> cols;
+    property <int> rows;
+    property <string> style_code;
 
-    callback request-new-map();
+    callback request-new-map(int, int, string);
     callback request-save-map();
 
     public function enable_generate_button() {
         gen_button.text = "Generate map";
         gen_button.enabled = true;
+    }
+
+    public function enable_save_button() {
+        save_button.text = "Save map";
+        save_button.enabled = true;
     }
 
     HorizontalBox {
@@ -32,6 +37,7 @@ export component AppWindow inherits Window {
         VerticalBox {
             VerticalBox {
                 alignment: start;
+                min-width: 20rem;
                 spacing: 0.5rem;
 
                 col_box := SpinBox {
@@ -108,15 +114,19 @@ export component AppWindow inherits Window {
                         self.text = "Generating...";
                         self.enabled = false;
 
-                        root.request-new-map();
+                        root.request-new-map(root.cols, root.rows, root.style_code);
                     }
                 }
 
-                Button {
+                save_button := Button {
                     text: "Save map";
                     vertical-stretch: 0;
                     enabled: false;
+                    
                     clicked => {
+                        self.text = "Saving...";
+                        self.enabled = false;
+
                         root.request-save-map();
                     }
                 }

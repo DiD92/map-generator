@@ -12,6 +12,10 @@ mod worker;
 slint::include_modules!();
 
 fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let ui = AppWindow::new()?;
     let ui_handle = ui.as_weak();
 

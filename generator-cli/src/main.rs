@@ -24,6 +24,10 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let map_data = create_map(args.columns, args.rows, args.style);
 
     let map_filename = {

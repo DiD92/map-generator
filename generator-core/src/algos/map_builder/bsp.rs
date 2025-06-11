@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::{
     constants::{MIN_RECT_HEIGHT, MIN_RECT_WIDTH, REGION_SPLIT_FACTOR},
@@ -77,6 +77,7 @@ impl BinarySpacePartitioning {
         };
 
         let region_count = u32::max(initial_rect.area() / config.region_split_factor, 2);
+        let region_count = 1;
 
         event!(
             tracing::Level::DEBUG,
@@ -105,11 +106,49 @@ impl BinarySpacePartitioning {
             .map(|region| {
                 let origin_rect = region.rect;
 
-                let region_rects = Self::generate_partitions(region, &config);
+                let base_time = std::time::Instant::now();
 
-                let trimmed_rects = Self::trim_connected_rects(region_rects, &config);
+                let (mut region_rects, mut removed_rects, mut neighbours) =
+                    Self::generate_partitions(region, &config);
 
-                (origin_rect, Self::trim_orphaned_rects(trimmed_rects))
+                let generate_time = std::time::Instant::now();
+
+                event!(
+                    tracing::Level::DEBUG,
+                    "Generated {} partitions for region {} in {:?}",
+                    region_rects.len(),
+                    origin_rect,
+                    generate_time.duration_since(base_time)
+                );
+
+                Self::trim_connected_rects(
+                    &mut region_rects,
+                    &mut removed_rects,
+                    &mut neighbours,
+                    &config,
+                );
+
+                let trim_time = std::time::Instant::now();
+
+                event!(
+                    tracing::Level::DEBUG,
+                    "Trimmed connected rects for region {} in {:?}",
+                    origin_rect,
+                    trim_time.duration_since(generate_time)
+                );
+
+                Self::trim_orphaned_rects(&mut region_rects, &mut removed_rects, &mut neighbours);
+
+                let trim_orphaned_time = std::time::Instant::now();
+
+                event!(
+                    tracing::Level::DEBUG,
+                    "Trimmed orphaned rects for region {} in {:?}",
+                    origin_rect,
+                    trim_orphaned_time.duration_since(trim_time)
+                );
+
+                (origin_rect, region_rects.into_values().collect::<Vec<_>>())
             })
             .collect()
     }
@@ -175,12 +214,12 @@ impl BinarySpacePartitioning {
     fn generate_partitions(
         region: RectRegion,
         config: &BinarySpacePartitioningConfig,
-    ) -> Vec<Rect> {
+    ) -> (
+        HashMap<usize, Rect>,
+        HashMap<usize, Rect>,
+        HashMap<usize, HashSet<usize>>,
+    ) {
         let mut rng = rand::rng();
-
-        let mut rect_stack = vec![region.rect];
-
-        let mut split_rects = vec![];
 
         let min_area = config.rect_area_cutoff;
         let max_area = min_area * config.big_rect_area_cutoff;
@@ -218,11 +257,26 @@ impl BinarySpacePartitioning {
             horizontal_split_prob
         );
 
-        while let Some(rect) = rect_stack.pop() {
+        let mut rect_idx = 0_usize;
+
+        let mut rect_table = HashMap::new();
+        rect_table.insert(rect_idx, region.rect);
+
+        let mut neighbour_table = HashMap::new();
+        neighbour_table.insert(rect_idx, HashSet::with_capacity(0));
+
+        let mut removed_rects = HashMap::new();
+
+        let mut idx_stack = vec![rect_idx];
+
+        while let Some(idx) = idx_stack.pop() {
+            let rect = rect_table.remove(&idx).unwrap();
             let rect_area = rect.area();
+
             if rect_area > min_area {
                 if rect_area <= max_area && rng.random_bool(config.big_rect_survival_prob) {
-                    split_rects.push(rect);
+                    // The rectangle survived, so we put it back into the table
+                    rect_table.insert(idx, rect);
                 } else {
                     let (rect_a, maybe_rect_b) = Self::split_rect(
                         rect,
@@ -231,18 +285,70 @@ impl BinarySpacePartitioning {
                         horizontal_split_prob,
                     );
 
-                    rect_stack.push(rect_a);
+                    rect_idx += 1;
+                    let rect_a_idx = rect_idx;
+                    let mut rect_a_neighbours = HashSet::new();
 
-                    if let Some(rect_b) = maybe_rect_b {
-                        rect_stack.push(rect_b);
+                    let mut maybe_rect_b = if let Some(rect_b) = maybe_rect_b {
+                        rect_idx += 1;
+
+                        rect_a_neighbours.insert(rect_idx);
+
+                        let mut rect_b_neighbours = HashSet::new();
+                        rect_b_neighbours.insert(rect_a_idx);
+
+                        Some((rect_idx, rect_b, rect_b_neighbours))
+                    } else {
+                        None
+                    };
+
+                    let mut current_neighbours = neighbour_table.remove(&idx).unwrap();
+
+                    for neighbour in current_neighbours.drain() {
+                        let neighbour_rect =
+                            if let Some(neighbour_rect) = rect_table.get(&neighbour) {
+                                neighbour_rect
+                            } else if let Some(removed_rect) = removed_rects.get(&neighbour) {
+                                removed_rect
+                            } else {
+                                panic!("Negihbour not found in either rect tables! {}", neighbour)
+                            };
+                        let neighbour_neighbours = neighbour_table.get_mut(&neighbour).unwrap();
+                        neighbour_neighbours.remove(&idx);
+
+                        if neighbour_rect.is_neighbour_of(&rect_a).is_some() {
+                            rect_a_neighbours.insert(neighbour);
+                            neighbour_neighbours.insert(rect_a_idx);
+                        }
+
+                        if let Some((rect_b_idx, rect_b, ref mut rect_b_neighbours)) = maybe_rect_b
+                        {
+                            if neighbour_rect.is_neighbour_of(&rect_b).is_some() {
+                                rect_b_neighbours.insert(neighbour);
+                                neighbour_neighbours.insert(rect_b_idx);
+                            }
+                        }
+                    }
+
+                    rect_table.insert(rect_a_idx, rect_a);
+                    neighbour_table.insert(rect_a_idx, rect_a_neighbours);
+                    idx_stack.push(rect_a_idx);
+
+                    if let Some((rect_b_idx, rect_b, rect_b_neighbours)) = maybe_rect_b {
+                        rect_table.insert(rect_b_idx, rect_b);
+                        neighbour_table.insert(rect_b_idx, rect_b_neighbours);
+                        idx_stack.push(rect_b_idx);
                     }
                 }
             } else if rng.random_bool(config.rect_survival_prob) {
-                split_rects.push(rect);
+                // The rectangle survived, so we put it back into the table
+                rect_table.insert(idx, rect);
+            } else {
+                removed_rects.insert(idx, rect);
             }
         }
 
-        split_rects
+        (rect_table, removed_rects, neighbour_table)
     }
 
     fn split_rect(
@@ -294,41 +400,69 @@ impl BinarySpacePartitioning {
         }
     }
 
-    fn trim_connected_rects(rects: Vec<Rect>, config: &BinarySpacePartitioningConfig) -> Vec<Rect> {
-        let neighbours = rects.clone();
-
-        rects
-            .into_par_iter()
-            .filter(|rect| {
-                let neighbour_count = neighbours
-                    .par_iter()
-                    .filter(|other_rect| rect.is_neighbour_of(other_rect).is_some())
-                    .count();
+    fn trim_connected_rects(
+        rects: &mut HashMap<usize, Rect>,
+        removed: &mut HashMap<usize, Rect>,
+        neighbour_map: &mut HashMap<usize, HashSet<usize>>,
+        config: &BinarySpacePartitioningConfig,
+    ) {
+        let rects_to_remove = rects
+            .par_iter()
+            .filter_map(|(idx, _)| {
+                let neighbour_count = neighbour_map.get(idx).map_or(0, |neighbour_set| {
+                    neighbour_set
+                        .iter()
+                        .filter(|n_idx| rects.contains_key(n_idx))
+                        .count()
+                });
 
                 let mut rng = rand::rng();
 
-                match neighbour_count {
-                    4 => !rng.random_bool(config.trim_fully_connected_rect_prob),
-                    3 => !rng.random_bool(config.trim_highly_connected_rect_prob),
-                    0 => false,
-                    _ => true,
-                }
+                let should_remove = match neighbour_count {
+                    8.. => rng.random_bool(config.trim_fully_connected_rect_prob),
+                    5..8 => rng.random_bool(config.trim_highly_connected_rect_prob),
+                    0 => true,
+                    _ => false,
+                };
+
+                if should_remove { Some(*idx) } else { None }
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        for rect_idx in rects_to_remove {
+            if let Some(rect) = rects.remove(&rect_idx) {
+                removed.insert(rect_idx, rect);
+            }
+        }
     }
 
-    fn trim_orphaned_rects(rects: Vec<Rect>) -> Vec<Rect> {
-        let neighbours = rects.clone();
+    fn trim_orphaned_rects(
+        rects: &mut HashMap<usize, Rect>,
+        removed: &mut HashMap<usize, Rect>,
+        neighbour_map: &mut HashMap<usize, HashSet<usize>>,
+    ) {
+        let rects_to_remove = rects
+            .par_iter()
+            .filter_map(|(idx, _)| {
+                let neighbour_count = neighbour_map.get(idx).map_or(0, |neighbour_set| {
+                    neighbour_set
+                        .iter()
+                        .filter(|n_idx| rects.contains_key(n_idx))
+                        .count()
+                });
 
-        rects
-            .into_par_iter()
-            .filter(|rect| {
-                neighbours
-                    .par_iter()
-                    .filter(|other_rect| rect.is_neighbour_of(other_rect).is_some())
-                    .count()
-                    != 0
+                if neighbour_count == 0 {
+                    Some(*idx)
+                } else {
+                    None
+                }
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        for rect_idx in rects_to_remove {
+            if let Some(rect) = rects.remove(&rect_idx) {
+                removed.insert(rect_idx, rect);
+            }
+        }
     }
 }

@@ -208,6 +208,13 @@ impl MapBuilder {
             config.bsp_config,
         );
 
+        let bsp_time = std::time::SystemTime::now();
+        event!(
+            tracing::Level::DEBUG,
+            "Generated BSP regions in {:?}ms",
+            bsp_time.duration_since(build_start).unwrap().as_millis()
+        );
+
         let map_regions = rect_regions
             .into_par_iter()
             .map(|(origin_rect, region_rects)| {
@@ -219,6 +226,16 @@ impl MapBuilder {
 
                 map_region
             });
+
+        let map_regions_time = std::time::SystemTime::now();
+        event!(
+            tracing::Level::DEBUG,
+            "Generated map regions in {:?}ms",
+            map_regions_time
+                .duration_since(bsp_time)
+                .unwrap()
+                .as_millis()
+        );
 
         let generated_maps = if config.merge_regions {
             let region_rooms = map_regions
@@ -290,6 +307,16 @@ impl MapBuilder {
 
             maps
         };
+
+        let generated_maps_time = std::time::SystemTime::now();
+        event!(
+            tracing::Level::DEBUG,
+            "Generated maps in {:?}ms",
+            generated_maps_time
+                .duration_since(map_regions_time)
+                .unwrap()
+                .as_millis()
+        );
 
         let built_rooms = generated_maps
             .iter()

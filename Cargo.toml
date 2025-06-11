@@ -4,7 +4,12 @@ rust-version = "1.86"
 
 [workspace]
 resolver = "3"
-members = ["generator-core", "generator-cli", "generator-server", "generator-ui"]
+members = [
+    "generator-core",
+    "generator-cli",
+    "generator-server",
+    "generator-ui",
+]
 
 [workspace.dependencies]
 axum = { version = "0.8", default-features = false }

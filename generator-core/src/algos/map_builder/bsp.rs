@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::{
+    algos::RngHandler,
     constants::{MIN_RECT_HEIGHT, MIN_RECT_WIDTH, REGION_SPLIT_FACTOR},
     types::{Cell, Rect, RectModifier, RectRegion, SplitAxis},
 };
@@ -58,6 +59,10 @@ impl Default for BinarySpacePartitioningConfig {
     }
 }
 
+pub(crate) type RectTable = HashMap<usize, Rect>;
+pub(crate) type RemovedRectTable = HashMap<usize, Rect>;
+pub(crate) type NeighbourTable = HashMap<usize, HashSet<usize>>;
+
 pub(crate) struct BinarySpacePartitioning;
 
 impl BinarySpacePartitioning {
@@ -65,7 +70,7 @@ impl BinarySpacePartitioning {
         width: u32,
         height: u32,
         config: BinarySpacePartitioningConfig,
-    ) -> Vec<(Rect, Vec<Rect>)> {
+    ) -> Vec<(Rect, RectTable, RemovedRectTable, NeighbourTable)> {
         if width <= MIN_RECT_WIDTH || height <= MIN_RECT_HEIGHT {
             return vec![];
         }
@@ -77,7 +82,6 @@ impl BinarySpacePartitioning {
         };
 
         let region_count = u32::max(initial_rect.area() / config.region_split_factor, 2);
-        let region_count = 1;
 
         event!(
             tracing::Level::DEBUG,
@@ -88,6 +92,8 @@ impl BinarySpacePartitioning {
         );
 
         let regions = Self::generate_regions(initial_rect, region_count, &config);
+
+        println!("Regions {:?}", regions);
 
         let avg_region_area =
             regions.iter().map(|r| r.rect.area()).sum::<u32>() / regions.len() as u32;
@@ -148,7 +154,7 @@ impl BinarySpacePartitioning {
                     trim_orphaned_time.duration_since(trim_time)
                 );
 
-                (origin_rect, region_rects.into_values().collect::<Vec<_>>())
+                (origin_rect, region_rects, removed_rects, neighbours)
             })
             .collect()
     }
@@ -185,7 +191,7 @@ impl BinarySpacePartitioning {
             }
         }
 
-        let mut rng = rand::rng();
+        let mut rng = RngHandler::rng();
 
         rect_queue
             .into_iter()
@@ -214,12 +220,8 @@ impl BinarySpacePartitioning {
     fn generate_partitions(
         region: RectRegion,
         config: &BinarySpacePartitioningConfig,
-    ) -> (
-        HashMap<usize, Rect>,
-        HashMap<usize, Rect>,
-        HashMap<usize, HashSet<usize>>,
-    ) {
-        let mut rng = rand::rng();
+    ) -> (RectTable, RemovedRectTable, NeighbourTable) {
+        let mut rng = RngHandler::rng();
 
         let min_area = config.rect_area_cutoff;
         let max_area = min_area * config.big_rect_area_cutoff;
@@ -360,7 +362,7 @@ impl BinarySpacePartitioning {
         let height_factor = rect.height as f32 / rect.width as f32;
         let width_factor = rect.width as f32 / rect.height as f32;
 
-        let mut rng = rand::rng();
+        let mut rng = RngHandler::rng();
 
         let split_axis = {
             if height_factor > height_cutoff {
@@ -416,7 +418,7 @@ impl BinarySpacePartitioning {
                         .count()
                 });
 
-                let mut rng = rand::rng();
+                let mut rng = RngHandler::rng();
 
                 let should_remove = match neighbour_count {
                     8.. => rng.random_bool(config.trim_fully_connected_rect_prob),
@@ -462,6 +464,71 @@ impl BinarySpacePartitioning {
         for rect_idx in rects_to_remove {
             if let Some(rect) = rects.remove(&rect_idx) {
                 removed.insert(rect_idx, rect);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_generate_and_trim_partitions() {
+        let width = 20;
+        let height = 20;
+
+        let mut config = BinarySpacePartitioningConfig::default();
+        // Force only two regions to be generated
+        config.region_split_factor = width * height;
+
+        let results = BinarySpacePartitioning::generate_and_trim_partitions(width, height, config);
+
+        assert_eq!(results.len(), 2);
+
+        for (origin_rect, rect_table, removed_rects, neighbours) in results {
+            // Check origin rect dimensions
+            assert!(origin_rect.width > 0 && origin_rect.width <= width);
+            assert!(origin_rect.height > 0 && origin_rect.height <= height);
+
+            // Check that neighbours table is not empty
+            assert!(!neighbours.is_empty());
+
+            // Check that the total number of rects in rect_table and removed_rects
+            assert!(rect_table.len() + removed_rects.len() == neighbours.len());
+
+            // Check that rects are not in the removed table
+            // and that they are in the neighbours table
+            for rect_idx in rect_table.keys() {
+                assert!(!removed_rects.contains_key(rect_idx));
+                assert!(neighbours.contains_key(rect_idx));
+            }
+
+            // Check that removed rects are not in the rect table
+            // and that they are in the neighbours table
+            for removed_rect_idx in removed_rects.keys() {
+                assert!(!rect_table.contains_key(removed_rect_idx));
+                assert!(neighbours.contains_key(removed_rect_idx));
+            }
+
+            // Verify neighbor relationships
+            for (idx, neighbor_set) in neighbours.iter() {
+                let rect = rect_table
+                    .get(idx)
+                    .or_else(|| removed_rects.get(idx))
+                    .expect("Rect or removed rect should exist for index");
+                // Check each rect has valid neighbors
+                for neighbour_idx in neighbor_set.iter() {
+                    assert!(neighbour_idx != idx, "Rect should not be its own neighbour");
+
+                    if let Some(neighbor_rect) = rect_table.get(neighbour_idx) {
+                        assert!(rect.is_neighbour_of(neighbor_rect).is_some());
+                    } else if let Some(neighbor_rect) = removed_rects.get(neighbour_idx) {
+                        assert!(rect.is_neighbour_of(neighbor_rect).is_some());
+                    } else {
+                        panic!("Rect or removed rect not found for index {}", idx);
+                    }
+                }
             }
         }
     }

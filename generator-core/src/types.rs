@@ -17,12 +17,13 @@ pub(crate) struct Vector2 {
 }
 
 impl Vector2 {
-    pub const ZERO: Vector2 = Vector2 { x: 0.0, y: 0.0 };
+    pub const ZERO: Vector2 = Vector2::new(0.0, 0.0);
 
-    pub fn new(x: f32, y: f32) -> Self {
+    pub const fn new(x: f32, y: f32) -> Self {
         Vector2 { x, y }
     }
 
+    // Computes the euclidean distance between two vectors
     pub fn distance(&self, other: &Vector2) -> f32 {
         ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
     }
@@ -258,12 +259,88 @@ impl Display for RectRegion {
 pub(crate) struct MapRegion {
     pub origin_rect: Rect,
     pub rooms: RoomTable,
+    pub removed_rooms: RoomTable,
     pub neighbours: NeighbourTable,
+}
+
+impl MapRegion {
+    pub fn new(origin_rect: Rect) -> Self {
+        MapRegion {
+            origin_rect,
+            rooms: RoomTable::new(),
+            removed_rooms: RoomTable::new(),
+            neighbours: NeighbourTable::new(),
+        }
+    }
+
+    pub fn offset_room_indexes(&mut self, offset: usize) {
+        let mut new_rooms = RoomTable::new();
+        for (id, room) in self.rooms.drain() {
+            new_rooms.insert(id + offset, room);
+        }
+        self.rooms = new_rooms;
+
+        let mut new_removed_rooms = RoomTable::new();
+        for (id, room) in self.removed_rooms.drain() {
+            new_removed_rooms.insert(id + offset, room);
+        }
+        self.removed_rooms = new_removed_rooms;
+
+        let mut new_neighbours = NeighbourTable::new();
+        for (id, mut neighbour_set) in self.neighbours.drain() {
+            let new_neighbour_set: HashSet<RoomId> = neighbour_set
+                .drain()
+                .map(|neighbour_id| neighbour_id + offset)
+                .collect();
+            new_neighbours.insert(id + offset, new_neighbour_set);
+        }
+        self.neighbours = new_neighbours;
+    }
+
+    pub fn try_merge_rooms(&mut self, room_id_a: RoomId, room_id_b: RoomId) -> Result<()> {
+        let from_room = self.rooms.remove(&room_id_a).unwrap();
+        let to_room = self.rooms.remove(&room_id_b).unwrap();
+
+        let merged_room = from_room.merged_with(to_room);
+        self.rooms.insert(room_id_a, merged_room);
+
+        // We extract the neighbours of the `from` room
+        // and remove the `to` room from its neighbours
+        let mut from_neighbours = self.neighbours.remove(&room_id_a).unwrap();
+        from_neighbours.remove(&room_id_b);
+
+        // We extract the neighbours of the `to` room
+        // and remove the `from` room from its neighbours
+        let mut to_neighbours = self.neighbours.remove(&room_id_b).unwrap();
+        to_neighbours.remove(&room_id_a);
+
+        // We merge the neighbours of both rooms into the `from` room
+        from_neighbours.extend(to_neighbours);
+
+        // We update the neighbours of the `to` room to point to the `from` room
+        for neighbour in from_neighbours.iter() {
+            if let Some(neighbours) = self.neighbours.get_mut(neighbour) {
+                neighbours.remove(&room_id_b);
+                neighbours.insert(room_id_a);
+            }
+        }
+
+        // We insert the merged room back into the neighbours map
+        self.neighbours.insert(room_id_a, from_neighbours);
+
+        Ok(())
+    }
 }
 
 impl Display for MapRegion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} - {}", self.origin_rect.origin, self.rooms.len())
+        write!(
+            f,
+            "{} - {} - {}",
+            self.origin_rect.origin,
+            self.rooms.len(),
+            self.removed_rooms.len()
+        )
     }
 }
 
@@ -297,6 +374,14 @@ impl Ord for Rect {
 }
 
 impl Rect {
+    pub fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
+        Rect {
+            origin: Cell { col: x, row: y },
+            width,
+            height,
+        }
+    }
+
     pub fn try_split_at(self, axis: SplitAxis, at: u32) -> Result<(Rect, Rect)> {
         match axis {
             SplitAxis::Horizontal => {

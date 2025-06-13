@@ -208,6 +208,11 @@ impl MapBuilder {
             config.bsp_config,
         );
 
+        let region_idx_offsets = Self::generate_region_offsets(
+            rect_regions.iter().map(|(_, rects, _, _)| rects),
+            rect_regions.len(),
+        );
+
         let bsp_time = std::time::SystemTime::now();
         event!(
             tracing::Level::DEBUG,
@@ -215,17 +220,33 @@ impl MapBuilder {
             bsp_time.duration_since(build_start).unwrap().as_millis()
         );
 
-        let map_regions = rect_regions
-            .into_par_iter()
-            .map(|(origin_rect, region_rects)| {
-                let mut map_region = Self::generate_map_region(origin_rect, region_rects);
+        let map_regions = rect_regions.into_par_iter().zip(region_idx_offsets).map(
+            |((origin_rect, region_rects, removed_rects, neighbours), idx_offset)| {
+                let mut map_region =
+                    Self::generate_map_region(origin_rect, region_rects, removed_rects, neighbours);
+
+                map_region.offset_room_indexes(idx_offset);
 
                 Self::merge_random_rooms(&mut map_region, config);
 
                 Self::reconnect_room_groups(&mut map_region, config);
 
+                // We randomly merge some groups of 1 sized-rooms first
+                Self::merge_repeated_simple_rooms(
+                    &mut map_region,
+                    1,
+                    config.repeat_small_room_merge_prob,
+                );
+                // Then we merge rooms of size 2 or less
+                Self::merge_repeated_simple_rooms(
+                    &mut map_region,
+                    2,
+                    config.repeat_small_room_merge_prob / 2.0,
+                );
+
                 map_region
-            });
+            },
+        );
 
         let map_regions_time = std::time::SystemTime::now();
         event!(
@@ -238,34 +259,27 @@ impl MapBuilder {
         );
 
         let generated_maps = if config.merge_regions {
-            let region_rooms = map_regions
-                .map(|mut region| {
-                    region
-                        .rooms
-                        .drain()
-                        .map(|(_, room)| room)
-                        .collect::<Vec<_>>()
-                })
-                .flatten()
-                .collect::<Vec<_>>();
-
-            let room_table = Self::generate_room_table(region_rooms);
-
-            let neighbour_map = Self::generate_neighbour_table(&room_table);
-
-            let mut map_region = MapRegion {
-                origin_rect: Rect {
-                    origin: Cell::new(0, 0),
-                    width: self.cols,
-                    height: self.rows,
-                },
-                rooms: room_table,
-                neighbours: neighbour_map,
+            let origin_rect = Rect {
+                origin: Cell::new(0, 0),
+                width: self.cols,
+                height: self.rows,
             };
+
+            let mut map_region = map_regions.reduce(
+                || MapRegion::new(origin_rect),
+                |mut acc, region| {
+                    acc.rooms.extend(region.rooms);
+                    acc.removed_rooms.extend(region.removed_rooms);
+                    acc.neighbours.extend(region.neighbours);
+
+                    acc
+                },
+            );
 
             Self::reconnect_room_groups(&mut map_region, config);
 
-            let doors = Self::add_doors_to_rooms(&map_region, config);
+            //let doors = Self::add_doors_to_rooms(&map_region, config);
+            let doors = vec![];
 
             let room_decorator = room_decorator::RoomDecoratorFactory::decorator_for(style);
             room_decorator::RoomDecorator::decorate(

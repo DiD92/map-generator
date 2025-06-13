@@ -1,6 +1,6 @@
 use super::RoomDecorator;
 use crate::{
-    algos::MapBuilderConfig,
+    algos::{MapBuilderConfig, RngHandler},
     types::{Cell, Door, MapRegion, RoomModifier},
 };
 
@@ -29,7 +29,11 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
                 continue;
             }
 
-            let any_neighbour_is_vertical = neighbour_table[idx].iter().any(|neighbour_id| {
+            let mut neighbours = neighbour_table[idx]
+                .iter()
+                .filter(|n| rooms.contains_key(n));
+
+            let any_neighbour_is_vertical = neighbours.any(|neighbour_id| {
                 let neighour = rooms.get(neighbour_id).unwrap();
                 room.is_neighbour_of(neighour)
                     .unwrap()
@@ -47,7 +51,7 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
             target_rooms.insert(*idx);
         }
 
-        let mut rng = rand::rng();
+        let mut rng = RngHandler::rng();
 
         let mut save_rooms = HashSet::<Cell>::new();
         let mut navigation_rooms = HashSet::<Cell>::new();

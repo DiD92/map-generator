@@ -16,6 +16,7 @@ axum = { version = "0.8", default-features = false }
 anyhow = { version = "1.0", default-features = false }
 clap = { version = "4.0", default-features = false }
 derive_more = { version = "2.0", default-features = false }
+priority-queue = { version = "2.0", default-features = false }
 rand = { version = "0.9", default-features = false }
 rayon = { version = "1.10", default-features = false }
 resvg = { version = "0.45", default-features = false }

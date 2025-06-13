@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true, optional = true }
+priority-queue = { workspace = true, features = ["std"] }
 rand = { workspace = true, features = ["thread_rng"] }
 rayon = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

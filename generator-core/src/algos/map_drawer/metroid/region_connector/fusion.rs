@@ -1,6 +1,6 @@
 use super::RegionConnectorDrawer;
 use crate::{
-    algos::map_drawer::STROKE_WIDTH,
+    algos::{RngHandler, map_drawer::STROKE_WIDTH},
     constants::RECT_SIZE_MULTIPLIER,
     types::{Cell, Direction, Room, RoomModifier},
 };
@@ -24,7 +24,7 @@ impl RegionConnectorDrawer for FusionRegionConnectorDrawer {
         let mut data = Data::new();
         let mut arrow_points = vec![];
 
-        let mut rng = rand::rng();
+        let mut rng = RngHandler::rng();
 
         let (selected_cell, origin_cell, direction) = match room.modifier {
             Some(RoomModifier::RegionConnection(Direction::North)) => {

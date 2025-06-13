@@ -1,6 +1,6 @@
 use super::RoomDecorator;
 use crate::{
-    algos::MapBuilderConfig,
+    algos::{MapBuilderConfig, RngHandler},
     types::{Cell, Door, MapRegion, RoomModifier},
 };
 
@@ -51,7 +51,7 @@ impl RoomDecorator for MetroidRoomDecorator {
             target_rooms.insert(*idx);
         }
 
-        let mut rng = rand::rng();
+        let mut rng = RngHandler::rng();
 
         let mut save_rooms = HashSet::<Cell>::new();
         let mut navigation_rooms = HashSet::<Cell>::new();

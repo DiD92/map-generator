@@ -1,5 +1,8 @@
 use super::{MapBuilder, MapBuilderConfig};
-use crate::types::{Door, DoorModifier, MapRegion, RoomId};
+use crate::{
+    algos::RngHandler,
+    types::{Door, DoorModifier, MapRegion, RoomId},
+};
 
 use std::collections::{HashMap, HashSet};
 
@@ -22,7 +25,7 @@ impl MapBuilder {
             connected_count.insert(*room, 0);
         }
 
-        let mut rng = rand::rng();
+        let mut rng = RngHandler::rng();
 
         let initial_room = {
             let idx = rng.random_range(0..rooms.len());
@@ -36,7 +39,11 @@ impl MapBuilder {
             visited_rooms.insert(room_id);
 
             let room = &rooms[&room_id];
-            for neighbour_id in neighbour_table[&room_id].iter() {
+            let neighbours = neighbour_table[&room_id]
+                .iter()
+                .filter(|n| rooms.contains_key(n));
+
+            for neighbour_id in neighbours {
                 if visited_rooms.contains(neighbour_id) {
                     continue;
                 }

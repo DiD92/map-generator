@@ -42,9 +42,7 @@ pub(crate) struct Cell {
 }
 
 impl Cell {
-    pub const ZERO: Cell = Cell { col: 0, row: 0 };
-
-    pub fn new(col: u32, row: u32) -> Self {
+    pub const fn new(col: u32, row: u32) -> Self {
         Cell { col, row }
     }
 
@@ -243,6 +241,17 @@ pub(crate) enum RectModifier {
     Chaotic,
 }
 
+impl Display for RectModifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RectModifier::Standard => write!(f, "standard"),
+            RectModifier::PreferHorizontal => write!(f, "horizontal"),
+            RectModifier::PreferVertical => write!(f, "vertical"),
+            RectModifier::Chaotic => write!(f, "chaotic"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct RectRegion {
     pub rect: Rect,
@@ -251,7 +260,7 @@ pub(crate) struct RectRegion {
 
 impl Display for RectRegion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} - {:?}", self.rect, self.modifier)
+        write!(f, "[{} - {}]", self.rect, self.modifier)
     }
 }
 
@@ -264,6 +273,84 @@ pub(crate) struct MapRegion {
 }
 
 impl MapRegion {
+    #[cfg(test)]
+    pub fn new_test_region() -> MapRegion {
+        /*
+           Creates the following map:
+
+           +---+---+---+---+---+---+
+           | 0 | 1 | 2 | 3 | 4 | 5 |
+           +---+---+   +---+   +---+
+           | 6 | 7 |   |           |
+           +---+---+---+---+---+---+
+           |   8   |   9   | A | B |
+           +---+---+---+---+   +---+
+           | C |   D   | E |   | F |
+           +---+---+---+---+---+---+
+
+           * Active rooms groups:
+              - [0, 1, 6]
+              - [3, 4]
+              - [C, D]
+              - [F]
+
+           * Removed rooms are:
+              - [2, 5, 7, 8, 9, A, B, E]
+        */
+
+        let origin_rect = Rect::new(0, 0, 6, 4);
+
+        let mut rooms = HashMap::new();
+        rooms.insert(0, Room::new_from_rect(Rect::new(0, 0, 1, 1)));
+        rooms.insert(1, Room::new_from_rect(Rect::new(1, 0, 1, 1)));
+        rooms.insert(6, Room::new_from_rect(Rect::new(0, 1, 1, 1)));
+
+        rooms.insert(3, Room::new_from_rect(Rect::new(3, 0, 1, 1)));
+        let room_4_a = Room::new_from_rect(Rect::new(4, 0, 1, 1));
+        let room_4_b = Room::new_from_rect(Rect::new(3, 1, 3, 1));
+        rooms.insert(4, room_4_a.merged_with(room_4_b));
+
+        rooms.insert(12, Room::new_from_rect(Rect::new(0, 3, 1, 1)));
+        rooms.insert(13, Room::new_from_rect(Rect::new(1, 3, 2, 1)));
+
+        rooms.insert(15, Room::new_from_rect(Rect::new(5, 3, 1, 1)));
+
+        let mut removed_rooms = HashMap::new();
+        removed_rooms.insert(2, Room::new_from_rect(Rect::new(2, 0, 1, 2)));
+        removed_rooms.insert(5, Room::new_from_rect(Rect::new(5, 0, 1, 1)));
+        removed_rooms.insert(7, Room::new_from_rect(Rect::new(1, 1, 1, 1)));
+        removed_rooms.insert(8, Room::new_from_rect(Rect::new(0, 2, 2, 1)));
+        removed_rooms.insert(9, Room::new_from_rect(Rect::new(2, 2, 2, 1)));
+        removed_rooms.insert(10, Room::new_from_rect(Rect::new(4, 2, 1, 2)));
+        removed_rooms.insert(11, Room::new_from_rect(Rect::new(5, 2, 1, 1)));
+        removed_rooms.insert(14, Room::new_from_rect(Rect::new(3, 3, 1, 1)));
+
+        let mut neighbours = HashMap::new();
+        neighbours.insert(0, HashSet::from([1, 6]));
+        neighbours.insert(1, HashSet::from([0, 2, 7]));
+        neighbours.insert(2, HashSet::from([1, 3, 4, 7, 9]));
+        neighbours.insert(3, HashSet::from([2, 4]));
+        neighbours.insert(4, HashSet::from([2, 3, 5, 9, 10, 11]));
+        neighbours.insert(5, HashSet::from([4]));
+        neighbours.insert(6, HashSet::from([0, 7, 8]));
+        neighbours.insert(7, HashSet::from([1, 2, 6, 8]));
+        neighbours.insert(8, HashSet::from([6, 7, 9, 12, 13]));
+        neighbours.insert(9, HashSet::from([2, 4, 8, 10, 13, 14]));
+        neighbours.insert(10, HashSet::from([4, 9, 11, 14, 15]));
+        neighbours.insert(11, HashSet::from([4, 10, 15]));
+        neighbours.insert(12, HashSet::from([8, 13]));
+        neighbours.insert(13, HashSet::from([8, 9, 12, 14]));
+        neighbours.insert(14, HashSet::from([9, 10, 13]));
+        neighbours.insert(15, HashSet::from([10, 11]));
+
+        MapRegion {
+            origin_rect,
+            rooms,
+            removed_rooms,
+            neighbours,
+        }
+    }
+
     pub fn new(origin_rect: Rect) -> Self {
         MapRegion {
             origin_rect,
@@ -330,6 +417,22 @@ impl MapRegion {
 
         Ok(())
     }
+
+    // Removes all rooms that have been marked as removed
+    // and removes their references from the neighbours table.
+    pub fn clear_removed_rooms(&mut self) {
+        for (room_id, _) in self.removed_rooms.drain() {
+            for neighbour_id in self
+                .neighbours
+                .remove(&room_id)
+                .expect("Should have neighbours")
+            {
+                if let Some(neighbours) = self.neighbours.get_mut(&neighbour_id) {
+                    neighbours.remove(&room_id);
+                }
+            }
+        }
+    }
 }
 
 impl Display for MapRegion {
@@ -355,7 +458,7 @@ impl Display for Rect {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "({},{}) - [{}x{}]",
+            "({},{}):[{}x{}]",
             self.origin.col, self.origin.row, self.width, self.height
         )
     }

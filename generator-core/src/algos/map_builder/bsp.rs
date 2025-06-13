@@ -1,63 +1,15 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-
+use super::BinarySpacePartitioningConfig;
 use crate::{
     algos::RngHandler,
-    constants::{MIN_RECT_HEIGHT, MIN_RECT_WIDTH, REGION_SPLIT_FACTOR},
-    types::{Cell, Rect, RectModifier, RectRegion, SplitAxis},
+    constants::{MIN_RECT_HEIGHT, MIN_RECT_WIDTH},
+    types::{Rect, RectModifier, RectRegion, SplitAxis},
 };
+
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use rand::Rng;
 use rayon::prelude::*;
 use tracing::event;
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct BinarySpacePartitioningConfig {
-    pub region_split_factor: u32,
-    // The proportion of regions that are going to be PreferHorizontal
-    // over PreferVertical. The Standard and Chaotic modifiers are
-    // excluded from this calculation. Since their proportions are fixed.
-    // The value is between 0.0 and 1.0.
-    pub horizontal_region_prob: f64,
-    // The minimum area of a rectangle to be considered for splitting.
-    pub rect_area_cutoff: u32,
-    // The maximum area of a rectangle proportional to rect_area_cutoff
-    // to be considered for skipping its splitting.
-    pub big_rect_area_cutoff: u32,
-    // The probability of leaving a big rectangle without further splitting.
-    pub big_rect_survival_prob: f64,
-    // The random probability of performing a horizontal split.
-    pub horizontal_split_prob: f64,
-    // The minimum height to width ratio at which we will always perform a
-    // horizontal split.
-    pub height_factor_cutoff: f32,
-    // The minimum width to height ratio at which we will always perform a
-    // vertical split.
-    pub width_factor_cutoff: f32,
-    // The probability of keeping the finaly splitted rectangle.
-    pub rect_survival_prob: f64,
-    // The probability of removing a highly connected rectangle.
-    pub trim_highly_connected_rect_prob: f64,
-    // The probability of removing a fully connected rectangle.
-    pub trim_fully_connected_rect_prob: f64,
-}
-
-impl Default for BinarySpacePartitioningConfig {
-    fn default() -> Self {
-        BinarySpacePartitioningConfig {
-            region_split_factor: REGION_SPLIT_FACTOR,
-            horizontal_region_prob: 0.5,
-            rect_area_cutoff: 2,
-            big_rect_area_cutoff: 9,
-            big_rect_survival_prob: 0.03,
-            horizontal_split_prob: 0.6,
-            height_factor_cutoff: 1.8,
-            width_factor_cutoff: 2.7,
-            rect_survival_prob: 0.43,
-            trim_highly_connected_rect_prob: 0.4,
-            trim_fully_connected_rect_prob: 0.5,
-        }
-    }
-}
 
 pub(crate) type RectTable = HashMap<usize, Rect>;
 pub(crate) type RemovedRectTable = HashMap<usize, Rect>;
@@ -72,28 +24,27 @@ impl BinarySpacePartitioning {
         config: BinarySpacePartitioningConfig,
     ) -> Vec<(Rect, RectTable, RemovedRectTable, NeighbourTable)> {
         if width <= MIN_RECT_WIDTH || height <= MIN_RECT_HEIGHT {
+            event!(
+                tracing::Level::WARN,
+                "Skipping partition generation for too small dimensions: [{}x{}]",
+                width,
+                height
+            );
+
             return vec![];
         }
 
-        let initial_rect = Rect {
-            origin: Cell::ZERO,
-            width,
-            height,
-        };
-
+        let initial_rect = Rect::new(0, 0, width, height);
         let region_count = u32::max(initial_rect.area() / config.region_split_factor, 2);
 
         event!(
             tracing::Level::DEBUG,
-            "Splitting inital rect of {}x{} into {} regions",
-            width,
-            height,
+            "Splitting inital rect [{}] into [{}] regions",
+            initial_rect,
             region_count
         );
 
         let regions = Self::generate_regions(initial_rect, region_count, &config);
-
-        println!("Regions {:?}", regions);
 
         let avg_region_area =
             regions.iter().map(|r| r.rect.area()).sum::<u32>() / regions.len() as u32;
@@ -102,7 +53,7 @@ impl BinarySpacePartitioning {
 
         event!(
             tracing::Level::DEBUG,
-            "Region area sizes: {}±{}",
+            "Region area sizes: [{}±{}]",
             avg_region_area,
             max_region_area - min_region_area
         );
@@ -112,20 +63,8 @@ impl BinarySpacePartitioning {
             .map(|region| {
                 let origin_rect = region.rect;
 
-                let base_time = std::time::Instant::now();
-
                 let (mut region_rects, mut removed_rects, mut neighbours) =
                     Self::generate_partitions(region, &config);
-
-                let generate_time = std::time::Instant::now();
-
-                event!(
-                    tracing::Level::DEBUG,
-                    "Generated {} partitions for region {} in {:?}",
-                    region_rects.len(),
-                    origin_rect,
-                    generate_time.duration_since(base_time)
-                );
 
                 Self::trim_connected_rects(
                     &mut region_rects,
@@ -134,27 +73,13 @@ impl BinarySpacePartitioning {
                     &config,
                 );
 
-                let trim_time = std::time::Instant::now();
-
-                event!(
-                    tracing::Level::DEBUG,
-                    "Trimmed connected rects for region {} in {:?}",
-                    origin_rect,
-                    trim_time.duration_since(generate_time)
-                );
-
                 Self::trim_orphaned_rects(&mut region_rects, &mut removed_rects, &mut neighbours);
 
-                let trim_orphaned_time = std::time::Instant::now();
-
-                event!(
-                    tracing::Level::DEBUG,
-                    "Trimmed orphaned rects for region {} in {:?}",
-                    origin_rect,
-                    trim_orphaned_time.duration_since(trim_time)
-                );
-
                 (origin_rect, region_rects, removed_rects, neighbours)
+            })
+            .filter(|(_, rects, _, _)| {
+                // Filter out empty regions
+                !rects.is_empty()
             })
             .collect()
     }
@@ -252,14 +177,14 @@ impl BinarySpacePartitioning {
 
         event!(
             tracing::Level::DEBUG,
-            "Splitting region: {} | HF:[{}] - WF:[{}] - HS:[{}]",
-            region,
+            "Splitting with params HF:[{:.2}] - WF:[{:.2}] - HS:[{:.2}] | Target region: {} ",
             height_factor_cutoff,
             width_factor_cutoff,
-            horizontal_split_prob
+            horizontal_split_prob,
+            region,
         );
 
-        let mut rect_idx = 0_usize;
+        let mut rect_idx = 1_usize;
 
         let mut rect_table = HashMap::new();
         rect_table.insert(rect_idx, region.rect);

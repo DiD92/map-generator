@@ -46,13 +46,15 @@ impl MapBuilder {
             // we will merge it with one of its neighbours randomly
             if neighbour_count > 0 && rng.random_bool(config.random_room_merge_prob) {
                 let selected_neighbour = neighbour_buffer
-                    .iter()
-                    .nth(rng.random_range(0..neighbour_count))
+                    .get(rng.random_range(0..neighbour_count))
                     .copied()
-                    .unwrap();
-                
+                    .expect("Should have a neighbour to merge with!");
+
                 if room_id == &selected_neighbour {
-                    println!("Warning: Room ID {} is merging with itself, skipping.", room_id);
+                    println!(
+                        "Warning: Room ID {} is merging with itself, skipping.",
+                        room_id
+                    );
                 }
 
                 rooms_to_merge.insert(*room_id);
@@ -113,14 +115,11 @@ impl MapBuilder {
                     continue;
                 }
 
-                let room = map_region
-                    .rooms
-                    .get(room_id)
-                    .expect(format!("Room {} should exist", room_id).as_str());
+                let room = map_region.rooms.get(room_id).expect("Should get room!");
                 let neighbour_room = map_region
                     .rooms
                     .get(neighbour_id)
-                    .expect(format!("Room {} should exist", room_id).as_str());
+                    .expect("Should get neighbour!");
 
                 if neighbour_room.cells.len() > max_size {
                     continue;
@@ -161,9 +160,9 @@ impl MapBuilder {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use crate::algos::map_builder::{BinarySpacePartitioningConfig, bsp::BinarySpacePartitioning};
 
-    use crate::algos::map_builder::bsp::{BinarySpacePartitioning, BinarySpacePartitioningConfig};
+    use super::*;
 
     #[test]
     fn test_merge_random_rooms() {

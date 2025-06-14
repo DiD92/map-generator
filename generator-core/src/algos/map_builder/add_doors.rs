@@ -49,7 +49,7 @@ impl MapBuilder {
                 }
 
                 if connected_count[neighbour_id] >= 1
-                    && !rng.random_bool(config.loop_connection_chance)
+                    && !rng.random_bool(config.door_loop_connection_chance)
                 {
                     continue;
                 }

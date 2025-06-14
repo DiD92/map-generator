@@ -14,7 +14,7 @@ use rand::Rng;
 
 impl MapBuilder {
     pub(super) fn reconnect_room_groups(map_region: &mut MapRegion, config: &MapBuilderConfig) {
-        let mut room_groups = Self::generate_room_groups(map_region);
+        let mut room_groups = Self::generate_room_groups(map_region, false);
 
         if room_groups.len() <= 1 {
             return;
@@ -38,47 +38,32 @@ impl MapBuilder {
                 // If there is more than one group, we need to connect them together
                 Self::connect_room_groups(room_groups, map_region, config);
 
-                room_groups = Self::generate_room_groups(map_region);
+                room_groups = Self::generate_room_groups(map_region, false);
             } else {
                 break;
             }
         }
     }
 
-    pub(super) fn reconnect_room_groups_for_merged_region(
-        map_region: &mut MapRegion,
-        config: &MapBuilderConfig,
-    ) {
-        let mut room_groups = Self::generate_room_groups(map_region);
-
-        println!(
-            "Reconnecting room groups, found {} groups",
-            room_groups.len()
-        );
-
-                // Then we compute the center of each group and each room
-        let (group_centers, room_centers) = Self::generate_group_centers(map_region, &room_groups);
-
-        // We use the group centers to find the closest groups to each other
-        let closest_groups = Self::generate_closest_groups(&group_centers, config);
-
-        println!("Closest groups: {:?}", closest_groups);
-
-        // CONTINUE HERE
-
-        // USE A MODIFIED VERSION OF get_path_between_rooms THAT LOOKS INTO THE OTHER GROUPS NEIGHBOURS 
-        // ADDITIONALLY SIMPLY SEARCH FOR THE NODES CLOSEST TO EACH OTHER IN THE GROUPS
-        // AND THEN TRY TO FIND A PATH BETWEEN THEM BY CHECK IF THEY ARE NEIGHBOURS OR NOT
-
-        if room_groups.len() <= 1 {
-            return;
-        }
-    }
-
-    fn generate_room_groups(map_region: &MapRegion) -> HashMap<usize, HashSet<RoomId>> {
+    fn generate_room_groups(
+        map_region: &MapRegion,
+        include_removed: bool,
+    ) -> HashMap<usize, HashSet<RoomId>> {
         let mut room_groups = HashMap::new();
         let mut group_id = 0;
-        let mut map_rooms = map_region.rooms.keys().copied().collect::<Vec<_>>();
+
+        // We need this for the case where we don't include removed rooms
+        let empty_removed_rooms = HashMap::with_capacity(0);
+        let mut map_rooms = map_region
+            .rooms
+            .keys()
+            .chain(if include_removed {
+                map_region.removed_rooms.keys()
+            } else {
+                empty_removed_rooms.keys()
+            })
+            .copied()
+            .collect::<Vec<_>>();
         let mut visited_rooms = HashSet::new();
 
         while let Some(room_id) = map_rooms.pop() {
@@ -95,6 +80,13 @@ impl MapBuilder {
 
                 for neighbour_id in map_region.neighbours[&room_id].iter() {
                     if map_region.rooms.contains_key(neighbour_id)
+                        && !group_visited_rooms.contains(neighbour_id)
+                    {
+                        rooms_to_visit.push(*neighbour_id);
+                    }
+
+                    if include_removed
+                        && map_region.removed_rooms.contains_key(neighbour_id)
                         && !group_visited_rooms.contains(neighbour_id)
                     {
                         rooms_to_visit.push(*neighbour_id);
@@ -122,7 +114,8 @@ impl MapBuilder {
         let (group_centers, room_centers) = Self::generate_group_centers(map_region, &room_groups);
 
         // We use the group centers to find the closest groups to each other
-        let closest_groups = Self::generate_closest_groups(&group_centers, config);
+        let closest_groups =
+            Self::generate_closest_groups(&group_centers, config.group_loop_connection_chance);
 
         for (group_a_idx, group_b_idx) in closest_groups.into_iter() {
             if group_a_idx == group_b_idx {
@@ -232,7 +225,7 @@ impl MapBuilder {
 
     fn generate_closest_groups(
         group_centers: &HashMap<usize, Vector2>,
-        config: &MapBuilderConfig,
+        loop_connection_chance: f64,
     ) -> Vec<(usize, usize)> {
         let mut closer_groups = Vec::new();
         let mut visited_links = HashSet::new();
@@ -245,7 +238,7 @@ impl MapBuilder {
             let mut maybe_closest_group_id = None;
             let mut maybe_second_closest_group_id = None;
 
-            let should_multi_connect = rng.random_bool(config.group_loop_connection_chance);
+            let should_multi_connect = rng.random_bool(loop_connection_chance);
 
             for (other_group_id, other_center) in group_centers.iter() {
                 if group_id == other_group_id
@@ -339,7 +332,7 @@ mod test {
     fn test_generate_room_groups() {
         let map_region = MapRegion::new_test_region();
 
-        let room_groups = MapBuilder::generate_room_groups(&map_region);
+        let room_groups = MapBuilder::generate_room_groups(&map_region, false);
         assert!(room_groups.len() == 4, "There should be 4 room groups");
 
         let mut groups_vec = room_groups
@@ -383,7 +376,7 @@ mod test {
     fn test_remove_small_groups() {
         let mut map_region = MapRegion::new_test_region();
 
-        let mut room_groups = MapBuilder::generate_room_groups(&map_region);
+        let mut room_groups = MapBuilder::generate_room_groups(&map_region, false);
         assert!(room_groups.len() == 4, "There should be 4 room groups");
 
         let mut groups_vec = room_groups
@@ -399,7 +392,7 @@ mod test {
 
         MapBuilder::remove_small_groups(&mut map_region, &mut room_groups);
 
-        room_groups = MapBuilder::generate_room_groups(&map_region);
+        room_groups = MapBuilder::generate_room_groups(&map_region, false);
         assert!(room_groups.len() == 3, "There should be 4 room groups");
 
         groups_vec = room_groups
@@ -449,13 +442,13 @@ mod test {
             "There should be 16 neighbour entries"
         );
 
-        let room_groups = MapBuilder::generate_room_groups(&map_region);
+        let room_groups = MapBuilder::generate_room_groups(&map_region, false);
 
         assert!(room_groups.len() == 4, "There should be 4 room groups");
 
         MapBuilder::reconnect_room_groups(&mut map_region, &MapBuilderConfig::default());
 
-        let room_groups = MapBuilder::generate_room_groups(&map_region);
+        let room_groups = MapBuilder::generate_room_groups(&map_region, false);
 
         assert_eq!(room_groups.len(), 1, "There should be only one room group");
 

@@ -49,6 +49,7 @@ impl Default for BinarySpacePartitioningConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct MapBuilderConfig {
     pub bsp_config: BinarySpacePartitioningConfig,
     // Should we merge the regions after generating their rooms?
@@ -59,7 +60,7 @@ pub(crate) struct MapBuilderConfig {
     pub group_loop_connection_chance: f64,
     // Probability of opening a connection between rooms that will
     // cause a navigation loop in the map.
-    pub loop_connection_chance: f64,
+    pub door_loop_connection_chance: f64,
     pub repeat_small_room_merge_prob: f64,
     pub bisect_room_prob: f64,
 }
@@ -71,7 +72,7 @@ impl Default for MapBuilderConfig {
             merge_regions: true,
             random_room_merge_prob: 0.05,
             group_loop_connection_chance: 0.17,
-            loop_connection_chance: 0.2,
+            door_loop_connection_chance: 0.2,
             repeat_small_room_merge_prob: 0.2,
             bisect_room_prob: 0.1,
         }
@@ -96,7 +97,7 @@ impl MapBuilderConfig {
 
                 base.random_room_merge_prob = 0.03;
                 base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
+                base.door_loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.51;
                 base.bisect_room_prob = 0.17;
             }
@@ -113,7 +114,7 @@ impl MapBuilderConfig {
 
                 base.random_room_merge_prob = 0.01;
                 base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.24;
+                base.door_loop_connection_chance = 0.24;
                 base.repeat_small_room_merge_prob = 0.45;
                 base.bisect_room_prob = 0.15;
             }
@@ -130,7 +131,7 @@ impl MapBuilderConfig {
 
                 base.random_room_merge_prob = 0.15;
                 base.group_loop_connection_chance = 0.10;
-                base.loop_connection_chance = 0.14;
+                base.door_loop_connection_chance = 0.14;
                 base.repeat_small_room_merge_prob = 0.85;
                 base.bisect_room_prob = 0.29;
             }
@@ -147,7 +148,7 @@ impl MapBuilderConfig {
 
                 base.random_room_merge_prob = 0.03;
                 base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
+                base.door_loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.81;
                 base.bisect_room_prob = 0.17;
             }
@@ -168,7 +169,7 @@ impl MapBuilderConfig {
 
                 base.random_room_merge_prob = 0.03;
                 base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
+                base.door_loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.51;
                 base.bisect_room_prob = 0.17;
             }
@@ -189,7 +190,7 @@ impl MapBuilderConfig {
 
                 base.random_room_merge_prob = 0.03;
                 base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
+                base.door_loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.51;
                 base.bisect_room_prob = 0.17;
             }
@@ -210,7 +211,7 @@ impl MapBuilderConfig {
 
                 base.random_room_merge_prob = 0.03;
                 base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
+                base.door_loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.51;
                 base.bisect_room_prob = 0.17;
             }

@@ -264,9 +264,18 @@ impl Display for RectRegion {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+enum RoomEntry {
+    #[default]
+    Empty,
+    Active(Room),
+    Removed(Room),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MapRegion {
     pub origin_rect: Rect,
+    //room_buffer: Vec<RoomEntry>,
     pub rooms: RoomTable,
     pub removed_rooms: RoomTable,
     pub neighbours: NeighbourTable,

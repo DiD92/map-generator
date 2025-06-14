@@ -92,6 +92,9 @@ impl BinarySpacePartitioning {
         let mut rect_queue = VecDeque::new();
         rect_queue.push_back(initial_rect);
 
+        // TODO: Use the rects area for deciding if continue splitting
+        // and make it so that the rects are not too small
+
         let width = initial_rect.width;
         let height = initial_rect.height;
 
@@ -182,6 +185,13 @@ impl BinarySpacePartitioning {
             width_factor_cutoff,
             horizontal_split_prob,
             region,
+        );
+
+        event!(
+            tracing::Level::DEBUG,
+            "Split bounds: min_area: {}, max_area: {}",
+            min_area,
+            max_area
         );
 
         let mut rect_idx = 1_usize;

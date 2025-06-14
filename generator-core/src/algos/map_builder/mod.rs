@@ -57,36 +57,45 @@ impl MapBuilder {
             rect_groups_time.duration_since(build_start).as_millis()
         );
 
-        let map_regions = rect_groups.into_par_iter().zip(group_idx_offsets).map(
-            |((origin_rect, region_rects, removed_rects, neighbours), idx_offset)| {
-                let mut map_region =
-                    Self::generate_map_region(origin_rect, region_rects, removed_rects, neighbours);
+        let map_regions = rect_groups
+            .into_par_iter()
+            .zip(group_idx_offsets)
+            .by_uniform_blocks(30)
+            .map(
+                |((origin_rect, region_rects, removed_rects, neighbours), idx_offset)| {
+                    let mut map_region = Self::generate_map_region(
+                        origin_rect,
+                        region_rects,
+                        removed_rects,
+                        neighbours,
+                    );
 
-                map_region.offset_room_indexes(idx_offset);
+                    map_region.offset_room_indexes(idx_offset);
 
-                Self::merge_random_rooms(&mut map_region, config);
+                    Self::merge_random_rooms(&mut map_region, config);
 
-                Self::reconnect_room_groups(&mut map_region, config);
+                    Self::reconnect_room_groups(&mut map_region, config);
 
-                // We randomly merge some groups of 1 sized-rooms first
-                Self::merge_repeated_simple_rooms(
-                    &mut map_region,
-                    1,
-                    config.repeat_small_room_merge_prob,
-                );
-                // Then we merge rooms of size 2 or less
-                Self::merge_repeated_simple_rooms(
-                    &mut map_region,
-                    2,
-                    config.repeat_small_room_merge_prob / 2.0,
-                );
+                    // We randomly merge some groups of 1 sized-rooms first
+                    Self::merge_repeated_simple_rooms(
+                        &mut map_region,
+                        1,
+                        config.repeat_small_room_merge_prob,
+                    );
+                    // Then we merge rooms of size 2 or less
+                    Self::merge_repeated_simple_rooms(
+                        &mut map_region,
+                        2,
+                        config.repeat_small_room_merge_prob / 2.0,
+                    );
 
-                // Finally we bisect long horizontal rooms randomly
-                //MapBuilder::bisect_long_horizontal_rooms(&mut map_region, config.bisect_room_prob);
+                    // Finally we bisect long horizontal rooms randomly
+                    //MapBuilder::bisect_long_horizontal_rooms(&mut map_region, config.bisect_room_prob);
 
-                map_region
-            },
-        );
+                    map_region
+                },
+            )
+            .collect::<Vec<_>>();
 
         let map_regions_time = std::time::Instant::now();
         event!(
@@ -100,7 +109,7 @@ impl MapBuilder {
         let generated_maps = if config.merge_regions {
             let origin_rect = Rect::new(0, 0, self.cols, self.rows);
 
-            let mut map_region = Self::merge_regions(origin_rect, map_regions, &config);
+            let mut map_region = Self::merge_regions(origin_rect, map_regions);
 
             let merge_time = std::time::Instant::now();
             event!(
@@ -149,6 +158,7 @@ impl MapBuilder {
             }]
         } else {
             let mut maps = map_regions
+                .into_iter()
                 .map(|mut map_region| {
                     // At this point we have no more used for the removed rooms
                     // so we can clear them.
@@ -193,10 +203,11 @@ impl MapBuilder {
             .fold(0_usize, |acc, map| acc + map.doors.len());
         event!(
             tracing::Level::DEBUG,
-            "Built {} map/s with {} rooms and {} doors",
+            "Built {} map/s with {} rooms and {} doors in {:.2}ms total",
             generated_maps.len(),
             built_rooms,
-            built_doors
+            built_doors,
+            generated_maps_time.duration_since(build_start).as_millis()
         );
 
         generated_maps

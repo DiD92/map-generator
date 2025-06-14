@@ -1,106 +1,101 @@
+use std::collections::HashSet;
+
 use super::MapBuilder;
-use crate::algos::MapBuilderConfig;
 use crate::types::{MapRegion, Rect};
 
-use rayon::iter::ParallelIterator;
-use rayon::prelude::*;
-
 impl MapBuilder {
-    pub(super) fn merge_regions(
-        origin_rect: Rect,
-        map_regions: impl ParallelIterator<Item = MapRegion>,
-        config: &MapBuilderConfig,
-    ) -> MapRegion {
-        let mut map_region = map_regions.reduce(
-            || MapRegion::new(origin_rect),
-            |mut acc, region| {
+    pub(super) fn merge_regions(origin_rect: Rect, mut map_regions: Vec<MapRegion>) -> MapRegion {
+        let neighbour_regions = Self::compure_neighbouring_regions(&map_regions);
+
+        for (from_id, to_id) in neighbour_regions.into_iter() {
+            Self::connect_separate_regions(from_id, to_id, map_regions.as_mut_slice());
+        }
+
+        let mut map_region = map_regions
+            .into_iter()
+            .reduce(|mut acc, region| {
                 acc.rooms.extend(region.rooms);
                 acc.removed_rooms.extend(region.removed_rooms);
                 acc.neighbours.extend(region.neighbours);
 
                 acc
-            },
-        );
+            })
+            .unwrap();
 
-        let now = std::time::Instant::now();
+        map_region.origin_rect = origin_rect;
 
-        Self::reconnect_room_groups_for_merged_region(&mut map_region, config);
+        map_region
+    }
 
-        let elapsed = now.elapsed();
-        tracing::event!(
-            tracing::Level::DEBUG,
-            "Reconnected room groups in {:.2}ms",
-            elapsed.as_millis()
-        );
+    fn compure_neighbouring_regions(map_regions: &[MapRegion]) -> Vec<(usize, usize)> {
+        let mut closer_groups = Vec::new();
+        let mut visited_links = HashSet::new();
 
-        let map_room_ids = map_region
-            .rooms
-            .iter()
-            .chain(map_region.removed_rooms.iter())
-            .collect::<Vec<_>>();
-
-        let (tx, rc) = std::sync::mpsc::channel();
-
-        map_room_ids
-            .par_iter()
-            .by_uniform_blocks(200)
-            .for_each_with(tx, |tx, (room_id, room)| {
-                for (other_id, other_room) in map_room_ids.iter() {
-                    if room_id == other_id {
-                        continue;
-                    }
-
-                    if room.is_neighbour_of(other_room).is_some() {
-                        tx.send((**room_id, **other_id)).unwrap();
-
-                        /*map_region
-                            .neighbours
-                            .get_mut(room_id)
-                            .unwrap()
-                            .insert(**other_id);
-                        map_region
-                            .neighbours
-                            .get_mut(other_id)
-                            .unwrap()
-                            .insert(**room_id);*/
-                    }
-                }
-            });
-
-        while let Ok((room_id, other_id)) = rc.recv() {
-            map_region
-                .neighbours
-                .get_mut(&room_id)
-                .unwrap()
-                .insert(other_id);
-            map_region
-                .neighbours
-                .get_mut(&other_id)
-                .unwrap()
-                .insert(room_id);
-        }
-
-        /*for (room_id, room) in map_room_ids.iter() {
-            for (other_id, other_room) in map_room_ids.iter() {
-                if room_id == other_id {
+        // We compute the closest groups to each other
+        for (from_id, map_region_from) in map_regions.iter().enumerate() {
+            for (to_id, map_region_to) in map_regions.iter().enumerate() {
+                if from_id == to_id || visited_links.contains(&(to_id, from_id)) {
                     continue;
                 }
 
-                if room.is_neighbour_of(other_room).is_some() {
-                    map_region
-                        .neighbours
-                        .get_mut(room_id)
-                        .unwrap()
-                        .insert(**other_id);
-                    map_region
-                        .neighbours
-                        .get_mut(other_id)
-                        .unwrap()
-                        .insert(**room_id);
+                if map_region_from
+                    .origin_rect
+                    .is_neighbour_of(&map_region_to.origin_rect)
+                    .is_some()
+                {
+                    closer_groups.push((from_id, to_id));
+                    visited_links.insert((from_id, to_id));
+                    visited_links.insert((to_id, from_id));
                 }
             }
-        }*/
+        }
 
-        map_region
+        closer_groups
+    }
+
+    fn connect_separate_regions(from_id: usize, to_id: usize, map_regions: &mut [MapRegion]) {
+        let from_region = &map_regions[from_id];
+        let from_room_ids = from_region
+            .rooms
+            .iter()
+            .chain(from_region.removed_rooms.iter());
+        let to_region = &map_regions[to_id];
+
+        let mut match_distance = f32::MAX;
+
+        let mut rooms_to_connect = Vec::new();
+
+        for (from_id, from_room) in from_room_ids.into_iter() {
+            let to_room_ids = to_region.rooms.iter().chain(to_region.removed_rooms.iter());
+
+            for (to_id, to_room) in to_room_ids.into_iter() {
+                let from_center = from_room.get_center();
+                let to_center = to_room.get_center();
+
+                let distance = from_center.distance(&to_center);
+                if distance <= match_distance && from_room.is_neighbour_of(to_room).is_some() {
+                    rooms_to_connect.push((*from_id, *to_id));
+
+                    match_distance = distance;
+                }
+            }
+        }
+
+        let regions = map_regions
+            .get_disjoint_mut([from_id, to_id])
+            .expect("Failed to get disjoint mutable references for merging regions");
+
+        for (from_room_id, to_room_id) in rooms_to_connect {
+            regions[0]
+                .neighbours
+                .get_mut(&from_room_id)
+                .unwrap()
+                .insert(to_room_id);
+            regions[1]
+                .neighbours
+                .get_mut(&to_room_id)
+                .unwrap()
+                .insert(from_room_id);
+        }
     }
 }

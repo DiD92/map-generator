@@ -5,7 +5,7 @@ use crate::{
 };
 
 impl MapBuilder {
-    pub(super) fn generate_group_offsets<'a>(
+    pub(super) fn generate_group_offsets(
         region_rects: &[(Rect, RectTable, RemovedRectTable, NeighbourTable)],
     ) -> Vec<usize> {
         let region_count = region_rects.len();

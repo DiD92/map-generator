@@ -2,10 +2,10 @@ use super::BinarySpacePartitioningConfig;
 use crate::{
     algos::RngHandler,
     constants::{MIN_RECT_HEIGHT, MIN_RECT_WIDTH},
-    types::{Rect, RectModifier, RectRegion, SplitAxis},
+    types::{NeighbourSet, Rect, RectModifier, RectRegion, SplitAxis},
 };
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 use rand::Rng;
 use rayon::prelude::*;
@@ -13,7 +13,7 @@ use tracing::event;
 
 pub(crate) type RectTable = HashMap<usize, Rect>;
 pub(crate) type RemovedRectTable = HashMap<usize, Rect>;
-pub(crate) type NeighbourTable = HashMap<usize, HashSet<usize>>;
+pub(crate) type NeighbourTable = HashMap<usize, NeighbourSet>;
 
 pub(crate) struct BinarySpacePartitioning;
 
@@ -35,16 +35,14 @@ impl BinarySpacePartitioning {
         }
 
         let initial_rect = Rect::new(0, 0, width, height);
-        let region_count = u32::max(initial_rect.area() / config.region_split_factor, 2);
 
         event!(
             tracing::Level::DEBUG,
-            "Splitting inital rect [{}] into [{}] regions",
-            initial_rect,
-            region_count
+            "Splitting inital rect [{}]",
+            initial_rect
         );
 
-        let regions = Self::generate_regions(initial_rect, region_count, &config);
+        let regions = Self::generate_regions(initial_rect, &config);
 
         let avg_region_area =
             regions.iter().map(|r| r.rect.area()).sum::<u32>() / regions.len() as u32;
@@ -86,42 +84,49 @@ impl BinarySpacePartitioning {
 
     fn generate_regions(
         initial_rect: Rect,
-        region_count: u32,
         config: &BinarySpacePartitioningConfig,
     ) -> Vec<RectRegion> {
         let mut rect_queue = VecDeque::new();
         rect_queue.push_back(initial_rect);
 
-        // TODO: Use the rects area for deciding if continue splitting
-        // and make it so that the rects are not too small
+        println!(
+            "Minimum area for region splitting: {}",
+            config.region_split_factor
+        );
 
-        let width = initial_rect.width;
-        let height = initial_rect.height;
+        let mut built_rects =
+            Vec::with_capacity(initial_rect.area() as usize / config.region_split_factor as usize);
 
-        while rect_queue.len() < region_count as usize {
-            let rect = rect_queue.pop_front().unwrap();
+        let mut rng = rand::rng();
 
-            if rect.width < width / region_count || rect.height < height / region_count {
-                rect_queue.push_back(rect);
+        while let Some(rect) = rect_queue.pop_front() {
+            let rect_split_factor =
+                (config.region_split_factor as f32 * rng.random_range(0.5..1.5)) as u32;
+
+            if rect.area() < rect_split_factor {
+                built_rects.push(rect);
                 continue;
             }
 
-            let (rect_a, maybe_rect_b) = Self::split_rect(
-                rect,
-                config.height_factor_cutoff,
-                config.width_factor_cutoff,
-                config.horizontal_split_prob,
-            );
-            rect_queue.push_front(rect_a);
+            let (rect_a, maybe_rect_b) = Self::split_rect(rect, 1.0, 1.0, 0.5, 0.0);
+            if rect_a.area() < config.region_split_factor {
+                rect_queue.push_back(rect_a);
+            } else {
+                rect_queue.push_front(rect_a);
+            }
 
             if let Some(rect_b) = maybe_rect_b {
-                rect_queue.push_front(rect_b);
+                if rect_b.area() < config.region_split_factor {
+                    rect_queue.push_back(rect_b);
+                } else {
+                    rect_queue.push_front(rect_b);
+                }
             }
         }
 
         let mut rng = RngHandler::rng();
 
-        rect_queue
+        built_rects
             .into_iter()
             .map(|rect| {
                 let roll = rng.random_range(1_u32..101);
@@ -152,7 +157,7 @@ impl BinarySpacePartitioning {
         let mut rng = RngHandler::rng();
 
         let min_area = config.rect_area_cutoff;
-        let max_area = min_area * config.big_rect_area_cutoff;
+        let max_area = config.big_rect_area_cutoff;
 
         let height_factor_cutoff = match region.modifier {
             RectModifier::Standard => config.height_factor_cutoff,
@@ -187,20 +192,13 @@ impl BinarySpacePartitioning {
             region,
         );
 
-        event!(
-            tracing::Level::DEBUG,
-            "Split bounds: min_area: {}, max_area: {}",
-            min_area,
-            max_area
-        );
-
-        let mut rect_idx = 1_usize;
+        let mut rect_idx = 0_usize;
 
         let mut rect_table = HashMap::new();
         rect_table.insert(rect_idx, region.rect);
 
         let mut neighbour_table = HashMap::new();
-        neighbour_table.insert(rect_idx, HashSet::with_capacity(0));
+        neighbour_table.insert(rect_idx, NeighbourSet::new());
 
         let mut removed_rects = HashMap::new();
 
@@ -220,18 +218,19 @@ impl BinarySpacePartitioning {
                         height_factor_cutoff,
                         width_factor_cutoff,
                         horizontal_split_prob,
+                        1.0,
                     );
 
                     rect_idx += 1;
                     let rect_a_idx = rect_idx;
-                    let mut rect_a_neighbours = HashSet::new();
+                    let mut rect_a_neighbours = NeighbourSet::new();
 
                     let mut maybe_rect_b = if let Some(rect_b) = maybe_rect_b {
                         rect_idx += 1;
 
                         rect_a_neighbours.insert(rect_idx);
 
-                        let mut rect_b_neighbours = HashSet::new();
+                        let mut rect_b_neighbours = NeighbourSet::new();
                         rect_b_neighbours.insert(rect_a_idx);
 
                         Some((rect_idx, rect_b, rect_b_neighbours))
@@ -251,7 +250,7 @@ impl BinarySpacePartitioning {
                                 panic!("Negihbour not found in either rect tables! {}", neighbour)
                             };
                         let neighbour_neighbours = neighbour_table.get_mut(&neighbour).unwrap();
-                        neighbour_neighbours.remove(&idx);
+                        neighbour_neighbours.remove(idx);
 
                         if neighbour_rect.is_neighbour_of(&rect_a).is_some() {
                             rect_a_neighbours.insert(neighbour);
@@ -293,6 +292,7 @@ impl BinarySpacePartitioning {
         height_cutoff: f32,
         width_cutoff: f32,
         horizontal_split_prob: f64,
+        chaos_factor: f32,
     ) -> (Rect, Option<Rect>) {
         let height_factor = rect.height as f32 / rect.width as f32;
         let width_factor = rect.width as f32 / rect.height as f32;
@@ -314,7 +314,14 @@ impl BinarySpacePartitioning {
         match split_axis {
             SplitAxis::Horizontal => {
                 if rect.height > 1 {
-                    let split_col = rng.random_range(1..rect.height);
+                    let split_range = 1..rect.height;
+                    let split_len = split_range.len();
+
+                    let split_col = if split_len > 5 && chaos_factor == 0.0 {
+                        (split_len / 2) as u32
+                    } else {
+                        rng.random_range(split_range)
+                    };
 
                     let (up, down) = rect.try_split_at(SplitAxis::Horizontal, split_col).unwrap();
 
@@ -325,7 +332,14 @@ impl BinarySpacePartitioning {
             }
             SplitAxis::Vertical => {
                 if rect.width > 1 {
-                    let split_row = rng.random_range(1..rect.width);
+                    let split_range = 1..rect.width;
+                    let split_len = split_range.len();
+
+                    let split_row = if split_len > 5 && chaos_factor == 0.0 {
+                        (split_len / 2) as u32
+                    } else {
+                        rng.random_range(split_range)
+                    };
 
                     let (left, right) = rect.try_split_at(SplitAxis::Vertical, split_row).unwrap();
 
@@ -340,7 +354,7 @@ impl BinarySpacePartitioning {
     fn trim_connected_rects(
         rects: &mut HashMap<usize, Rect>,
         removed: &mut HashMap<usize, Rect>,
-        neighbour_map: &mut HashMap<usize, HashSet<usize>>,
+        neighbour_map: &mut HashMap<usize, NeighbourSet>,
         config: &BinarySpacePartitioningConfig,
     ) {
         let rects_to_remove = rects
@@ -376,7 +390,7 @@ impl BinarySpacePartitioning {
     fn trim_orphaned_rects(
         rects: &mut HashMap<usize, Rect>,
         removed: &mut HashMap<usize, Rect>,
-        neighbour_map: &mut HashMap<usize, HashSet<usize>>,
+        neighbour_map: &mut HashMap<usize, NeighbourSet>,
     ) {
         let rects_to_remove = rects
             .par_iter()
@@ -419,7 +433,7 @@ mod test {
 
         let results = BinarySpacePartitioning::generate_and_trim_partitions(width, height, config);
 
-        assert_eq!(results.len(), 2);
+        assert_eq!(results.len(), 1);
 
         for (origin_rect, rect_table, removed_rects, neighbours) in results {
             // Check origin rect dimensions
@@ -454,11 +468,14 @@ mod test {
                     .expect("Rect or removed rect should exist for index");
                 // Check each rect has valid neighbors
                 for neighbour_idx in neighbor_set.iter() {
-                    assert!(neighbour_idx != idx, "Rect should not be its own neighbour");
+                    assert!(
+                        neighbour_idx != *idx,
+                        "Rect should not be its own neighbour"
+                    );
 
-                    if let Some(neighbor_rect) = rect_table.get(neighbour_idx) {
+                    if let Some(neighbor_rect) = rect_table.get(&neighbour_idx) {
                         assert!(rect.is_neighbour_of(neighbor_rect).is_some());
-                    } else if let Some(neighbor_rect) = removed_rects.get(neighbour_idx) {
+                    } else if let Some(neighbor_rect) = removed_rects.get(&neighbour_idx) {
                         assert!(rect.is_neighbour_of(neighbor_rect).is_some());
                     } else {
                         panic!("Rect or removed rect not found for index {}", idx);

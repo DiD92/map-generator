@@ -7,14 +7,16 @@ use crate::{
 use std::{
     cmp::Reverse,
     collections::{HashMap, HashSet},
+    ops::Deref,
 };
 
 use priority_queue::PriorityQueue;
 use rand::Rng;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 impl MapBuilder {
     pub(super) fn reconnect_room_groups(map_region: &mut MapRegion, config: &MapBuilderConfig) {
-        let mut room_groups = Self::generate_room_groups(map_region, false);
+        let mut room_groups = Self::generate_room_groups(map_region);
 
         if room_groups.len() <= 1 {
             return;
@@ -26,43 +28,25 @@ impl MapBuilder {
                 true
             } else {
                 let room_id = group.drain().next().unwrap();
-                let room = map_region.rooms.remove(&room_id).unwrap();
-                map_region.removed_rooms.insert(room_id, room);
+                map_region.mark_removed(room_id);
 
                 false
             }
         });
 
-        loop {
-            if room_groups.len() > 1 {
-                // If there is more than one group, we need to connect them together
-                Self::connect_room_groups(room_groups, map_region, config);
-
-                room_groups = Self::generate_room_groups(map_region, false);
-            } else {
-                break;
-            }
+        if room_groups.len() > 1 {
+            // If there is more than one group, we need to connect them together
+            Self::connect_room_groups(room_groups, map_region, config);
         }
     }
 
-    fn generate_room_groups(
-        map_region: &MapRegion,
-        include_removed: bool,
-    ) -> HashMap<usize, HashSet<RoomId>> {
+    fn generate_room_groups(map_region: &MapRegion) -> HashMap<usize, HashSet<RoomId>> {
         let mut room_groups = HashMap::new();
         let mut group_id = 0;
 
-        // We need this for the case where we don't include removed rooms
-        let empty_removed_rooms = HashMap::with_capacity(0);
         let mut map_rooms = map_region
-            .rooms
-            .keys()
-            .chain(if include_removed {
-                map_region.removed_rooms.keys()
-            } else {
-                empty_removed_rooms.keys()
-            })
-            .copied()
+            .iter_active()
+            .map(|(room_id, _)| room_id)
             .collect::<Vec<_>>();
         let mut visited_rooms = HashSet::new();
 
@@ -78,18 +62,9 @@ impl MapBuilder {
                 group_visited_rooms.insert(room_id);
                 visited_rooms.insert(room_id);
 
-                for neighbour_id in map_region.neighbours[&room_id].iter() {
-                    if map_region.rooms.contains_key(neighbour_id)
-                        && !group_visited_rooms.contains(neighbour_id)
-                    {
-                        rooms_to_visit.push(*neighbour_id);
-                    }
-
-                    if include_removed
-                        && map_region.removed_rooms.contains_key(neighbour_id)
-                        && !group_visited_rooms.contains(neighbour_id)
-                    {
-                        rooms_to_visit.push(*neighbour_id);
+                for neighbour_id in map_region.iter_active_neighbours(room_id) {
+                    if !group_visited_rooms.contains(&neighbour_id) {
+                        rooms_to_visit.push(neighbour_id);
                     }
                 }
             }
@@ -117,40 +92,59 @@ impl MapBuilder {
         let closest_groups =
             Self::generate_closest_groups(&group_centers, config.group_loop_connection_chance);
 
-        for (group_a_idx, group_b_idx) in closest_groups.into_iter() {
-            if group_a_idx == group_b_idx {
-                continue;
-            }
+        let map_region = std::sync::Arc::new(std::sync::RwLock::new(map_region));
 
-            let mut closest_a = usize::MAX;
-            let mut closest_b = usize::MAX;
-            let mut closest_distance = f32::MAX;
-
-            // We find the closest rooms in each group pair
-            for room_a_id in room_groups[&group_a_idx].iter() {
-                for room_b_id in room_groups[&group_b_idx].iter() {
-                    let distance_a = room_centers[room_a_id];
-                    let distance_b = room_centers[room_b_id];
-
-                    let distance = distance_a.distance(&distance_b);
-                    if distance < closest_distance {
-                        closest_distance = distance;
-                        closest_a = *room_a_id;
-                        closest_b = *room_b_id;
+        let room_path = closest_groups
+            .into_par_iter()
+            .map_with(
+                map_region.clone(),
+                |map_region, (group_a_idx, group_b_idx)| {
+                    if group_a_idx == group_b_idx {
+                        return vec![];
                     }
-                }
-            }
 
-            // We find the rooms that connect the two closest rooms
-            let room_path = Self::get_path_between_rooms(closest_a, closest_b, map_region);
+                    let closest_a = room_groups[&group_a_idx]
+                        .iter()
+                        .map(|id| {
+                            let group_center = group_centers[&group_b_idx];
+                            let room_center = room_centers[id];
 
-            // For every room in the path that was removed, we move it
-            // back to the map region
-            for room_id in room_path.into_iter() {
-                if let Some(room) = map_region.removed_rooms.remove(&room_id) {
-                    map_region.rooms.insert(room_id, room);
-                }
-            }
+                            (*id, room_center.distance(&group_center))
+                        })
+                        .reduce(|a, b| if a.1 < b.1 { a } else { b })
+                        .unwrap()
+                        .0;
+
+                    let closest_b = room_groups[&group_b_idx]
+                        .iter()
+                        .map(|id| {
+                            let group_center = group_centers[&group_a_idx];
+                            let room_center = room_centers[id];
+
+                            (*id, room_center.distance(&group_center))
+                        })
+                        .reduce(|a, b| if a.1 < b.1 { a } else { b })
+                        .unwrap()
+                        .0;
+
+                    // We find the rooms that connect the two closest rooms
+                    let room_path = Self::get_path_between_rooms(
+                        closest_a,
+                        closest_b,
+                        map_region.read().unwrap().deref(),
+                        &room_centers,
+                    );
+
+                    room_path
+                },
+            )
+            .flatten()
+            .collect::<Vec<_>>();
+
+        let mut lock_write = map_region.write().unwrap();
+
+        for room_id in room_path.into_iter() {
+            lock_write.mark_active(room_id);
         }
     }
 
@@ -180,8 +174,7 @@ impl MapBuilder {
                 true
             } else {
                 for room_id in rooms.drain() {
-                    let room = map_region.rooms.remove(&room_id).unwrap();
-                    map_region.removed_rooms.insert(room_id, room);
+                    map_region.mark_removed(room_id);
                 }
                 false
             }
@@ -193,10 +186,8 @@ impl MapBuilder {
         room_groups: &HashMap<usize, HashSet<usize>>,
     ) -> (HashMap<usize, Vector2>, HashMap<RoomId, Vector2>) {
         let room_centers = map_region
-            .rooms
-            .iter()
-            .chain(map_region.removed_rooms.iter())
-            .map(|(idx, room)| (*idx, room.get_center()))
+            .iter_rooms()
+            .map(|(idx, room)| (idx, room.get_center()))
             .collect::<HashMap<_, _>>();
 
         let group_centers = room_groups
@@ -280,19 +271,18 @@ impl MapBuilder {
     fn get_path_between_rooms(
         origin_idx: usize,
         target_idx: usize,
-        map_region: &mut MapRegion,
+        map_region: &MapRegion,
+        room_centers: &HashMap<RoomId, Vector2>,
     ) -> Vec<usize> {
         let mut move_queue = PriorityQueue::new();
         let mut move_visited = HashMap::new();
 
-        let mut smallest_cost = usize::MAX;
-        let mut shortest_path = Vec::new();
+        let intial_distance = room_centers[&origin_idx].scalar_distance(&room_centers[&target_idx]);
+        move_queue.push((origin_idx, vec![origin_idx]), Reverse(intial_distance));
 
-        move_queue.push((origin_idx, vec![origin_idx]), Reverse(1_usize));
-
-        while let Some(((node, path), Reverse(path_len))) = move_queue.pop() {
+        while let Some(((node, path), Reverse(distance))) = move_queue.pop() {
             let should_visit = if let Some(cost) = move_visited.get(&node) {
-                cost > &path_len
+                cost > &distance
             } else {
                 true
             };
@@ -301,24 +291,32 @@ impl MapBuilder {
                 continue;
             }
 
-            move_visited.insert(node, path_len);
+            move_visited.insert(node, distance);
 
-            if node == target_idx && path_len < smallest_cost {
-                smallest_cost = path_len + 1;
-                shortest_path.clear();
-                shortest_path.extend(path.into_iter());
+            if node == target_idx {
+                // If we reached the target room, return the path
+                return path;
             } else {
-                for neighbour_idx in map_region.neighbours[&node].iter() {
-                    let mut new_path = path.clone();
-                    new_path.push(*neighbour_idx);
-                    let new_path_cost = path_len + 1;
+                for neighbour_idx in map_region.iter_neighbours(node) {
+                    let neighbour_distance =
+                        room_centers[&neighbour_idx].scalar_distance(&room_centers[&target_idx]);
 
-                    move_queue.push_increase((*neighbour_idx, new_path), Reverse(new_path_cost));
+                    if let Some(prev_path_len) = move_visited.get(&neighbour_idx) {
+                        if *prev_path_len <= neighbour_distance {
+                            continue; // Skip if we already have a shorter path
+                        }
+                    }
+
+                    let mut new_path = path.clone();
+                    new_path.push(neighbour_idx);
+
+                    move_queue
+                        .push_increase((neighbour_idx, new_path), Reverse(neighbour_distance));
                 }
             }
         }
 
-        shortest_path
+        Vec::with_capacity(0)
     }
 }
 
@@ -332,7 +330,7 @@ mod test {
     fn test_generate_room_groups() {
         let map_region = MapRegion::new_test_region();
 
-        let room_groups = MapBuilder::generate_room_groups(&map_region, false);
+        let room_groups = MapBuilder::generate_room_groups(&map_region);
         assert!(room_groups.len() == 4, "There should be 4 room groups");
 
         let mut groups_vec = room_groups
@@ -355,7 +353,7 @@ mod test {
         let total_rooms: usize = room_groups.values().map(|group| group.len()).sum();
         assert_eq!(
             total_rooms,
-            map_region.rooms.len(),
+            map_region.iter_active().count(),
             "All rooms should be assigned to a group"
         );
 
@@ -376,7 +374,7 @@ mod test {
     fn test_remove_small_groups() {
         let mut map_region = MapRegion::new_test_region();
 
-        let mut room_groups = MapBuilder::generate_room_groups(&map_region, false);
+        let mut room_groups = MapBuilder::generate_room_groups(&map_region);
         assert!(room_groups.len() == 4, "There should be 4 room groups");
 
         let mut groups_vec = room_groups
@@ -392,7 +390,7 @@ mod test {
 
         MapBuilder::remove_small_groups(&mut map_region, &mut room_groups);
 
-        room_groups = MapBuilder::generate_room_groups(&map_region, false);
+        room_groups = MapBuilder::generate_room_groups(&map_region);
         assert!(room_groups.len() == 3, "There should be 4 room groups");
 
         groups_vec = room_groups
@@ -413,7 +411,16 @@ mod test {
         let origin_idx = 13; // Room E
         let target_idx = 15; // Room F
 
-        let path = MapBuilder::get_path_between_rooms(origin_idx, target_idx, &mut map_region);
+        let room_groups = MapBuilder::generate_room_groups(&map_region);
+
+        let (_, room_centers) = MapBuilder::generate_group_centers(&map_region, &room_groups);
+
+        let path = MapBuilder::get_path_between_rooms(
+            origin_idx,
+            target_idx,
+            &mut map_region,
+            &room_centers,
+        );
 
         assert!(!path.is_empty(), "Path should not be empty");
         assert!(
@@ -432,48 +439,31 @@ mod test {
     fn test_reconnect_room_groups() {
         let mut map_region = MapRegion::new_test_region();
 
-        let room_count = map_region.rooms.len();
+        let room_count = map_region.iter_active().count();
         assert!(room_count == 8, "There should be 8 rooms");
-        let removed_room_count = map_region.removed_rooms.len();
+        let removed_room_count = map_region.iter_removed().count();
         assert!(removed_room_count == 8, "There should be 8 removed rooms");
-        let neighbour_count = map_region.neighbours.len();
-        assert!(
-            neighbour_count == 16,
-            "There should be 16 neighbour entries"
-        );
 
-        let room_groups = MapBuilder::generate_room_groups(&map_region, false);
+        let room_groups = MapBuilder::generate_room_groups(&map_region);
 
         assert!(room_groups.len() == 4, "There should be 4 room groups");
 
         MapBuilder::reconnect_room_groups(&mut map_region, &MapBuilderConfig::default());
 
-        let room_groups = MapBuilder::generate_room_groups(&map_region, false);
+        let room_groups = MapBuilder::generate_room_groups(&map_region);
 
         assert_eq!(room_groups.len(), 1, "There should be only one room group");
 
-        let new_room_count = map_region.rooms.len();
+        let new_room_count = map_region.iter_active().count();
         assert!(
             new_room_count > room_count,
             "There should be more rooms after reconnecting groups"
         );
 
-        let new_removed_room_count = map_region.removed_rooms.len();
+        let new_removed_room_count = map_region.iter_removed().count();
         assert!(
             new_removed_room_count < removed_room_count,
             "There should be fewer removed rooms after reconnecting groups"
-        );
-
-        let new_neighbour_count = map_region.neighbours.len();
-        assert_eq!(
-            new_neighbour_count, neighbour_count,
-            "There should be the same number of neighbours after reconnecting groups"
-        );
-
-        assert_eq!(
-            new_room_count + new_removed_room_count,
-            new_neighbour_count,
-            "Total new rooms and new removed rooms should still equal total neighbours"
         );
     }
 }

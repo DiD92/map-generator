@@ -78,7 +78,7 @@ impl MapBuilder {
         for (from_room_id, from_room) in from_room_map.iter() {
             if from_room_map
                 .values()
-                .any(|room| match from_room.is_neighbour_of(room) {
+                .any(|room| match from_room.get_neighbouring_cells_for(room) {
                     Some(ref neighours) => neighours
                         .iter()
                         .any(|(_, _, direction)| direction == &from_axis),
@@ -92,7 +92,7 @@ impl MapBuilder {
             for (to_room_id, to_room) in to_room_map.iter() {
                 if to_room_map
                     .values()
-                    .any(|room| match to_room.is_neighbour_of(room) {
+                    .any(|room| match to_room.get_neighbouring_cells_for(room) {
                         Some(ref neighours) => neighours
                             .iter()
                             .any(|(_, _, direction)| direction == &to_axis),

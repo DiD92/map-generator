@@ -13,6 +13,7 @@ rand = { workspace = true, features = ["thread_rng"] }
 rayon = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 svg = { workspace = true }
+tinyset = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
 
 [features]

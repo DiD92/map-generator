@@ -87,16 +87,16 @@ impl MapBuilderConfig {
             MapStyle::CastlevaniaSOTN => {
                 base.bsp_config.horizontal_region_prob = 0.75;
                 base.bsp_config.big_rect_area_cutoff = 14;
-                base.bsp_config.big_rect_survival_prob = 0.09;
+                base.bsp_config.big_rect_survival_prob = 0.05;
                 base.bsp_config.horizontal_split_prob = 0.85;
                 base.bsp_config.height_factor_cutoff = 2.9;
                 base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.33;
+                base.bsp_config.rect_survival_prob = 0.13;
                 base.bsp_config.trim_highly_connected_rect_prob = 0.8;
                 base.bsp_config.trim_fully_connected_rect_prob = 0.9;
 
                 base.random_room_merge_prob = 0.03;
-                base.group_loop_connection_chance = 0.19;
+                base.group_loop_connection_chance = 0.64;
                 base.door_loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.51;
                 base.bisect_room_prob = 0.17;
@@ -104,16 +104,16 @@ impl MapBuilderConfig {
             MapStyle::CastlevaniaAOS => {
                 base.bsp_config.horizontal_region_prob = 0.0;
                 base.bsp_config.big_rect_area_cutoff = 11;
-                base.bsp_config.big_rect_survival_prob = 0.12;
+                base.bsp_config.big_rect_survival_prob = 0.11;
                 base.bsp_config.horizontal_split_prob = 0.82;
                 base.bsp_config.height_factor_cutoff = 2.4;
                 base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.51;
+                base.bsp_config.rect_survival_prob = 0.49;
                 base.bsp_config.trim_highly_connected_rect_prob = 0.77;
                 base.bsp_config.trim_fully_connected_rect_prob = 0.85;
 
                 base.random_room_merge_prob = 0.01;
-                base.group_loop_connection_chance = 0.19;
+                base.group_loop_connection_chance = 0.79;
                 base.door_loop_connection_chance = 0.24;
                 base.repeat_small_room_merge_prob = 0.45;
                 base.bisect_room_prob = 0.15;
@@ -130,7 +130,7 @@ impl MapBuilderConfig {
                 base.bsp_config.trim_fully_connected_rect_prob = 0.60;
 
                 base.random_room_merge_prob = 0.15;
-                base.group_loop_connection_chance = 0.10;
+                base.group_loop_connection_chance = 0.90;
                 base.door_loop_connection_chance = 0.14;
                 base.repeat_small_room_merge_prob = 0.85;
                 base.bisect_room_prob = 0.29;
@@ -138,16 +138,16 @@ impl MapBuilderConfig {
             MapStyle::CastlevaniaHOD => {
                 base.bsp_config.horizontal_region_prob = 0.75;
                 base.bsp_config.big_rect_area_cutoff = 8;
-                base.bsp_config.big_rect_survival_prob = 0.09;
+                base.bsp_config.big_rect_survival_prob = 0.03;
                 base.bsp_config.horizontal_split_prob = 0.85;
                 base.bsp_config.height_factor_cutoff = 1.9;
                 base.bsp_config.width_factor_cutoff = 1.6;
-                base.bsp_config.rect_survival_prob = 0.70;
+                base.bsp_config.rect_survival_prob = 0.40;
                 base.bsp_config.trim_highly_connected_rect_prob = 0.8;
                 base.bsp_config.trim_fully_connected_rect_prob = 0.9;
 
                 base.random_room_merge_prob = 0.03;
-                base.group_loop_connection_chance = 0.19;
+                base.group_loop_connection_chance = 0.86;
                 base.door_loop_connection_chance = 0.22;
                 base.repeat_small_room_merge_prob = 0.81;
                 base.bisect_room_prob = 0.17;

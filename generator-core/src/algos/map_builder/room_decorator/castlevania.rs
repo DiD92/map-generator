@@ -14,9 +14,6 @@ pub(super) struct CastlevaniaRoomDectorator;
 
 impl RoomDecorator for CastlevaniaRoomDectorator {
     fn decorate(&self, map_region: &mut MapRegion, doors: &[Door], _: &MapBuilderConfig) {
-        let rooms = &mut map_region.rooms;
-        let neighbour_table = &map_region.neighbours;
-
         let mut target_rooms = HashSet::new();
 
         let door_map = doors
@@ -24,31 +21,30 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
             .map(|door| (&door.from, &door.to))
             .collect::<HashSet<_>>();
 
-        for (idx, room) in rooms.iter() {
+        for (room_idx, room) in map_region.iter_active() {
             if room.cells.len() > 1 {
                 continue;
             }
 
-            let mut neighbours = neighbour_table[idx]
-                .iter()
-                .filter(|n| rooms.contains_key(n));
-
-            let any_neighbour_is_vertical = neighbours.any(|neighbour_id| {
-                let neighour = rooms.get(neighbour_id).unwrap();
-                room.is_neighbour_of(neighour)
-                    .unwrap()
-                    .iter()
-                    .any(|(from, to, direction)| {
-                        (door_map.contains(&(from, to)) || door_map.contains(&(to, from)))
-                            && !direction.is_horizontal()
-                    })
-            });
+            let any_neighbour_is_vertical =
+                map_region
+                    .iter_active_neighbours(room_idx)
+                    .any(|neighbour_id| {
+                        let neighour = map_region.get_active(neighbour_id);
+                        room.get_neighbouring_cells_for(neighour)
+                            .unwrap()
+                            .iter()
+                            .any(|(from, to, direction)| {
+                                (door_map.contains(&(from, to)) || door_map.contains(&(to, from)))
+                                    && !direction.is_horizontal()
+                            })
+                    });
 
             if any_neighbour_is_vertical {
                 continue;
             }
 
-            target_rooms.insert(*idx);
+            target_rooms.insert(room_idx);
         }
 
         let mut rng = RngHandler::rng();
@@ -57,7 +53,7 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
         let mut navigation_rooms = HashSet::<Cell>::new();
 
         for room_id in target_rooms.iter() {
-            let room_cell = rooms.get(room_id).unwrap().cells[0];
+            let room_cell = map_region.get_active(*room_id).cells[0];
 
             let mut min_save_distance = u32::MAX;
             let mut min_nav_distance = u32::MAX;
@@ -98,7 +94,7 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
                 _ => None,
             };
 
-            rooms.get_mut(room_id).unwrap().modifier = modifier;
+            map_region.get_mut_room(*room_id).modifier = modifier;
         }
     }
 }

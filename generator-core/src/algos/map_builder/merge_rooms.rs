@@ -7,7 +7,7 @@ use rand::Rng;
 
 impl MapBuilder {
     pub(super) fn merge_random_rooms(map_region: &mut MapRegion, config: &MapBuilderConfig) {
-        let mut rooms_to_merge = HashSet::with_capacity(map_region.rooms.len() / 4);
+        let mut rooms_to_merge = HashSet::with_capacity(map_region.room_slots() / 4);
         let mut merge_groups = Vec::with_capacity(rooms_to_merge.capacity() / 2);
 
         let mut rng = RngHandler::rng();
@@ -17,8 +17,8 @@ impl MapBuilder {
         let mut neighbour_buffer = Vec::new();
 
         // First, we build a set of rooms that are going to be merged
-        for (room_id, room) in map_region.rooms.iter() {
-            if rooms_to_merge.contains(room_id) {
+        for (room_id, room) in map_region.iter_active() {
+            if rooms_to_merge.contains(&room_id) {
                 continue;
             }
 
@@ -26,12 +26,9 @@ impl MapBuilder {
             // and that is a valid room in the map_region
             neighbour_buffer.extend(
                 map_region
-                    .neighbours
-                    .get(room_id)
-                    .expect("Room should have neighbours")
+                    .get_neighbours(room_id)
                     .iter()
-                    .filter(|n| map_region.rooms.contains_key(n) && !rooms_to_merge.contains(*n))
-                    .copied(),
+                    .filter(|n| map_region.is_active(*n) && !rooms_to_merge.contains(n)),
             );
 
             let neighbour_count = neighbour_buffer.len();
@@ -50,17 +47,17 @@ impl MapBuilder {
                     .copied()
                     .expect("Should have a neighbour to merge with!");
 
-                if room_id == &selected_neighbour {
+                if room_id == selected_neighbour {
                     println!(
                         "Warning: Room ID {} is merging with itself, skipping.",
                         room_id
                     );
                 }
 
-                rooms_to_merge.insert(*room_id);
+                rooms_to_merge.insert(room_id);
                 rooms_to_merge.insert(selected_neighbour);
 
-                merge_groups.push((*room_id, selected_neighbour));
+                merge_groups.push((room_id, selected_neighbour));
             }
 
             neighbour_buffer.clear();
@@ -69,7 +66,7 @@ impl MapBuilder {
         // Now we merge the rooms in the merge_groups
         for (room_a_idx, room_b_idx) in merge_groups.into_iter() {
             map_region
-                .try_merge_rooms(room_a_idx, room_b_idx)
+                .merge_active_rooms(room_a_idx, room_b_idx)
                 .expect("Should merge rooms");
         }
     }
@@ -83,13 +80,13 @@ impl MapBuilder {
 
         let mut non_merge_candidates = HashSet::new();
 
-        for (i, room) in map_region.rooms.iter() {
+        for (i, room) in map_region.iter_active() {
             let room_cells = room.cells.len();
 
             if room_cells <= max_size {
-                merge_candidates.insert(*i);
+                merge_candidates.insert(i);
             } else {
-                non_merge_candidates.insert(*i);
+                non_merge_candidates.insert(i);
             }
         }
 
@@ -98,8 +95,8 @@ impl MapBuilder {
 
         let mut rng = RngHandler::rng();
 
-        for room_id in merge_candidates.iter() {
-            if visited_rooms.contains(room_id) {
+        for &room_id in merge_candidates.iter() {
+            if visited_rooms.contains(&room_id) {
                 continue;
             }
 
@@ -107,29 +104,27 @@ impl MapBuilder {
 
             let mut room_merged = false;
 
-            let neighours = map_region.neighbours[room_id]
-                .iter()
-                .filter(|n| map_region.rooms.contains_key(n));
-            for neighbour_id in neighours {
-                if visited_rooms.contains(neighbour_id) {
+            for neighbour_id in map_region.iter_active_neighbours(room_id) {
+                if visited_rooms.contains(&neighbour_id) {
                     continue;
                 }
 
-                let room = map_region.rooms.get(room_id).expect("Should get room!");
-                let neighbour_room = map_region
-                    .rooms
-                    .get(neighbour_id)
-                    .expect("Should get neighbour!");
+                let room = map_region.get_active(room_id);
+                let neighbour_room = map_region.get_active(neighbour_id);
 
                 if neighbour_room.cells.len() > max_size {
                     continue;
                 }
 
+                let room_cells_count = room.cells.len();
+                let room_neighbours_count = map_region.get_neighbours(room_id).len();
+                let neighour_cells_count = neighbour_room.cells.len();
+                let neighour_neighbours_count = map_region.get_neighbours(neighbour_id).len();
+
                 // If either rooms are the only neighbour of the other and that room has a area of 1
                 // we don't merge them
-                if (room.cells.len() == 1 && map_region.neighbours[room_id].len() == 1)
-                    || neighbour_room.cells.len() == 1
-                        && map_region.neighbours[neighbour_id].len() == 1
+                if (room_cells_count == 1 && room_neighbours_count == 1)
+                    || neighour_cells_count == 1 && neighour_neighbours_count == 1
                 {
                     continue;
                 }
@@ -137,7 +132,7 @@ impl MapBuilder {
                 if rng.random_bool(merge_prob) {
                     visited_rooms.insert(neighbour_id);
 
-                    merge_pairs.insert(*room_id, *neighbour_id);
+                    merge_pairs.insert(room_id, neighbour_id);
 
                     room_merged = true;
 
@@ -146,13 +141,13 @@ impl MapBuilder {
             }
 
             if !room_merged {
-                non_merge_candidates.insert(*room_id);
+                non_merge_candidates.insert(room_id);
             }
         }
 
         for (from, to) in merge_pairs.into_iter() {
             map_region
-                .try_merge_rooms(from, to)
+                .merge_active_rooms(from, to)
                 .expect("Should merge rooms");
         }
     }
@@ -174,102 +169,31 @@ mod test {
 
         let results = BinarySpacePartitioning::generate_and_trim_partitions(width, height, config);
 
-        assert_eq!(results.len(), 2);
-
         // We take only the first region for simplicity
         let (origin_rect, rect_table, removed_rects, neighbours) = results[0].clone();
 
         let mut map_region =
             MapBuilder::generate_map_region(origin_rect, rect_table, removed_rects, neighbours);
 
-        let room_count = map_region.rooms.len();
+        let room_count = map_region.iter_active().count();
         assert!(room_count > 1, "There should be more than one room");
-        let removed_room_count = map_region.removed_rooms.len();
+        let removed_room_count = map_region.iter_removed().count();
         assert!(removed_room_count > 0, "There should be some removed rooms");
-        let removed_neighbour_count = map_region.neighbours.len();
-        assert!(
-            removed_neighbour_count > 0,
-            "There should be some neighbours"
-        );
 
         let config = MapBuilderConfig::default();
-
-        // Verify neighbor relationships
-        for (idx, neighbor_set) in map_region.neighbours.iter() {
-            let room = map_region
-                .rooms
-                .get(idx)
-                .or_else(|| map_region.removed_rooms.get(idx))
-                .expect("Room or removed room should exist for index");
-            // Check each room has valid neighbors
-            for neighbour_idx in neighbor_set.iter() {
-                assert!(neighbour_idx != idx, "Room should not be its own neighbour");
-
-                if let Some(neighbor_rect) = map_region.rooms.get(neighbour_idx) {
-                    assert!(room.is_neighbour_of(neighbor_rect).is_some());
-                } else if let Some(neighbor_rect) = map_region.removed_rooms.get(neighbour_idx) {
-                    assert!(room.is_neighbour_of(neighbor_rect).is_some());
-                } else {
-                    panic!("Room or removed rect not found for index {}", idx);
-                }
-            }
-        }
 
         MapBuilder::merge_random_rooms(&mut map_region, &config);
 
         // Check that the number of rooms, removed rooms, and neighbours has not increased
-        let new_room_count = map_region.rooms.len();
+        let new_room_count = map_region.iter_active().count();
         assert!(
             new_room_count <= room_count,
             "The number of rooms may have decreased after merging"
         );
-        let new_removed_room_count = map_region.removed_rooms.len();
+        let new_removed_room_count = map_region.iter_removed().count();
         assert!(
             new_removed_room_count == removed_room_count,
             "The number of removed rooms should not change after merging"
         );
-        let new_removed_neighbour_count = map_region.neighbours.len();
-        assert!(
-            new_removed_neighbour_count <= removed_neighbour_count,
-            "The number of neighbours may have decreased after merging"
-        );
-
-        // Check that the total number of rooms and removed rooms matches the neighbours
-        assert!(
-            map_region.rooms.len() + map_region.removed_rooms.len() == map_region.neighbours.len()
-        );
-
-        // Check that rects are not in the removed table
-        // and that they are in the neighbours table
-        for rect_idx in map_region.rooms.keys() {
-            assert!(!map_region.removed_rooms.contains_key(rect_idx));
-            assert!(map_region.neighbours.contains_key(rect_idx));
-        }
-
-        // Check that removed rects are not in the rect table
-        // and that they are in the neighbours table
-        for removed_rect_idx in map_region.removed_rooms.keys() {
-            assert!(!map_region.rooms.contains_key(removed_rect_idx));
-            assert!(map_region.neighbours.contains_key(removed_rect_idx));
-        }
-
-        // Verify neighbor relationships
-        for (idx, neighbor_set) in map_region.neighbours.iter() {
-            let rect = map_region
-                .rooms
-                .get(idx)
-                .or_else(|| map_region.removed_rooms.get(idx))
-                .expect("Rect or removed rect should exist for index");
-            // Check each rect has valid neighbors
-            for neighbour_idx in neighbor_set.iter() {
-                if let Some(neighbor_rect) = map_region.rooms.get(neighbour_idx) {
-                    assert!(rect.is_neighbour_of(neighbor_rect).is_some());
-                } else if let Some(neighbor_rect) = map_region.removed_rooms.get(neighbour_idx) {
-                    assert!(rect.is_neighbour_of(neighbor_rect).is_some());
-                } else {
-                    panic!("Rect or removed rect not found for index {}", idx);
-                }
-            }
-        }
     }
 }

@@ -1,10 +1,8 @@
-use std::collections::HashSet;
-
 use super::MapBuilder;
 use crate::{
     algos::RngHandler,
     constants::MIN_BISECT_SIZE,
-    types::{MapRegion, Room, RoomId},
+    types::{MapRegion, NeighbourSet, Room, RoomId},
 };
 
 use rand::Rng;
@@ -12,11 +10,10 @@ use rand::Rng;
 impl MapBuilder {
     pub(super) fn bisect_long_horizontal_rooms(map_region: &mut MapRegion, bisect_chance: f64) {
         let mut target_rooms = Vec::new();
-        let mut next_room_id = map_region.rooms.keys().max().unwrap() + 1;
 
         let mut rng = RngHandler::rng();
 
-        for (idx, room) in map_region.rooms.iter() {
+        for (idx, room) in map_region.iter_active() {
             if room.cells.len() < MIN_BISECT_SIZE {
                 continue;
             }
@@ -30,7 +27,7 @@ impl MapBuilder {
                 continue;
             }
 
-            target_rooms.push(*idx);
+            target_rooms.push(idx);
         }
 
         for room_id in target_rooms.into_iter() {
@@ -40,186 +37,64 @@ impl MapBuilder {
                 continue;
             }
 
-            let mut room = map_region.rooms.remove(&room_id).unwrap();
-            let room_neighbours = map_region
-                .neighbours
-                .remove(&room_id)
-                .expect("Room should have neighbours");
-
+            let mut room = map_region.take_active(room_id);
             room.cells.sort_by(|a, b| a.col.cmp(&b.col));
 
-            let bisect_cell = rng.random_range(0..room.cells.len());
+            let bisect_cell = rng.random_range(1..room.cells.len() - 1);
 
-            if bisect_cell == 0 {
-                let room_a_id = next_room_id;
-                let room_a = Room {
-                    cells: vec![room.cells[bisect_cell]],
-                    modifier: room.modifier,
-                };
-                Self::recompute_neighours_for(
-                    room_id,
-                    &room_neighbours,
-                    map_region,
-                    room_a_id,
-                    room_a,
-                );
+            let room_a = Room {
+                cells: room.cells[0..bisect_cell].to_vec(),
+                modifier: room.modifier,
+            };
+            let room_a_id = map_region.insert_room(room_a);
+            Self::recompute_neighours_for(room_id, map_region, room_a_id);
 
-                next_room_id += 1;
-                let room_b_id = next_room_id;
-                let room_b = Room {
-                    cells: room.cells[(bisect_cell + 1)..].to_vec(),
-                    modifier: room.modifier,
-                };
-                Self::recompute_neighours_for(
-                    room_id,
-                    &room_neighbours,
-                    map_region,
-                    room_b_id,
-                    room_b,
-                );
+            let room_b = Room {
+                cells: vec![room.cells[bisect_cell]],
+                modifier: room.modifier,
+            };
+            let room_b_id = map_region.insert_room(room_b);
+            Self::recompute_neighours_for(room_id, map_region, room_b_id);
 
-                map_region
-                    .neighbours
-                    .get_mut(&room_a_id)
-                    .unwrap()
-                    .insert(room_b_id);
-                map_region
-                    .neighbours
-                    .get_mut(&room_b_id)
-                    .unwrap()
-                    .insert(room_a_id);
-            } else if bisect_cell == room.cells.len() - 1 {
-                let room_a_id = next_room_id;
-                let room_a = Room {
-                    cells: room.cells[0..bisect_cell].to_vec(),
-                    modifier: room.modifier,
-                };
-                Self::recompute_neighours_for(
-                    room_id,
-                    &room_neighbours,
-                    map_region,
-                    room_a_id,
-                    room_a,
-                );
+            let room_c = Room {
+                cells: room.cells[(bisect_cell + 1)..].to_vec(),
+                modifier: room.modifier,
+            };
+            let room_c_id = map_region.insert_room(room_c);
+            Self::recompute_neighours_for(room_id, map_region, room_c_id);
 
-                next_room_id += 1;
-                let room_b_id = next_room_id;
-                let room_b = Room {
-                    cells: vec![room.cells[bisect_cell]],
-                    modifier: room.modifier,
-                };
-                Self::recompute_neighours_for(
-                    room_id,
-                    &room_neighbours,
-                    map_region,
-                    room_b_id,
-                    room_b,
-                );
-                map_region
-                    .neighbours
-                    .get_mut(&room_a_id)
-                    .unwrap()
-                    .insert(room_b_id);
-                map_region
-                    .neighbours
-                    .get_mut(&room_b_id)
-                    .unwrap()
-                    .insert(room_a_id);
-            } else {
-                let room_a_id = next_room_id;
-                let room_a = Room {
-                    cells: room.cells[0..bisect_cell].to_vec(),
-                    modifier: room.modifier,
-                };
-                Self::recompute_neighours_for(
-                    room_id,
-                    &room_neighbours,
-                    map_region,
-                    room_a_id,
-                    room_a,
-                );
+            map_region.get_mut_neighbours(room_a_id).insert(room_b_id);
+            map_region.get_mut_neighbours(room_b_id).insert(room_a_id);
+            map_region.get_mut_neighbours(room_b_id).insert(room_c_id);
+            map_region.get_mut_neighbours(room_c_id).insert(room_b_id);
 
-                next_room_id += 1;
-                let room_b_id = next_room_id;
-                let room_b = Room {
-                    cells: vec![room.cells[bisect_cell]],
-                    modifier: room.modifier,
-                };
-                Self::recompute_neighours_for(
-                    room_id,
-                    &room_neighbours,
-                    map_region,
-                    room_b_id,
-                    room_b,
-                );
-
-                next_room_id += 1;
-                let room_c_id = next_room_id;
-                let room_c = Room {
-                    cells: room.cells[(bisect_cell + 1)..].to_vec(),
-                    modifier: room.modifier,
-                };
-                Self::recompute_neighours_for(
-                    room_id,
-                    &room_neighbours,
-                    map_region,
-                    room_c_id,
-                    room_c,
-                );
-
-                map_region
-                    .neighbours
-                    .get_mut(&room_a_id)
-                    .unwrap()
-                    .insert(room_b_id);
-                map_region
-                    .neighbours
-                    .get_mut(&room_b_id)
-                    .unwrap()
-                    .insert(room_a_id);
-                map_region
-                    .neighbours
-                    .get_mut(&room_b_id)
-                    .unwrap()
-                    .insert(room_c_id);
-                map_region
-                    .neighbours
-                    .get_mut(&room_c_id)
-                    .unwrap()
-                    .insert(room_b_id);
-            }
-
-            next_room_id += 1;
+            let _ = map_region.take_neighbours(room_id);
         }
+
+        map_region.shrink_buffers();
     }
 
-    fn recompute_neighours_for(
-        room_id: RoomId,
-        room_neighbours: &HashSet<RoomId>,
-        map_region: &mut MapRegion,
-        new_room_id: RoomId,
-        new_room: Room,
-    ) {
-        let mut new_neighbours = HashSet::new();
+    fn recompute_neighours_for(room_id: RoomId, map_region: &mut MapRegion, new_room_id: RoomId) {
+        let mut new_neighbours = NeighbourSet::new();
 
-        let neighours = room_neighbours
-            .iter()
-            .filter(|n| map_region.rooms.contains_key(n));
+        let neighbours = map_region.iter_neighbours(room_id).collect::<Vec<_>>();
 
-        for neighbour in neighours {
-            let neighbours = map_region.neighbours.get_mut(neighbour).unwrap();
+        for neighbour in neighbours {
+            let new_room = map_region.get_room(new_room_id);
+            let neighbour_room = map_region.get_room(neighbour);
 
-            neighbours.remove(&room_id);
+            if new_room.is_neighbour_of(neighbour_room) {
+                let neighbour_neighbours = map_region.get_mut_neighbours(neighbour);
 
-            let neighbour_room = map_region.rooms.get(neighbour).unwrap();
+                neighbour_neighbours.remove(room_id);
 
-            if new_room.is_neighbour_of(neighbour_room).is_some() {
-                neighbours.insert(new_room_id);
-                new_neighbours.insert(*neighbour);
+                neighbour_neighbours.insert(new_room_id);
+                new_neighbours.insert(neighbour);
             }
         }
 
-        map_region.neighbours.insert(new_room_id, new_neighbours);
-        map_region.rooms.insert(new_room_id, new_room);
+        map_region
+            .get_mut_neighbours(new_room_id)
+            .extend(new_neighbours);
     }
 }

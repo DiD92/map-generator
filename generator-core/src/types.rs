@@ -453,7 +453,7 @@ impl MapRegion {
                 .drain()
                 .map(|id| id - min_idx)
                 .collect::<NeighbourSet>();
-            let _ = std::mem::replace(&mut neighbour_buffer[room_id - min_idx], Some(target_set));
+            let _ = neighbour_buffer[room_id - min_idx].replace(target_set);
         }
 
         MapRegion {
@@ -706,7 +706,7 @@ impl MapRegion {
         }
 
         // We insert the merged room back into the neighbours map
-        let _ = std::mem::replace(&mut self.neighbour_buffer[room_id_a], Some(from_neighbours));
+        let _ = self.neighbour_buffer[room_id_a].replace(from_neighbours);
 
         Ok(())
     }

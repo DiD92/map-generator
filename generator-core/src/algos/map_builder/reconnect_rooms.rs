@@ -128,14 +128,12 @@ impl MapBuilder {
                         .0;
 
                     // We find the rooms that connect the two closest rooms
-                    let room_path = Self::get_path_between_rooms(
+                    Self::get_path_between_rooms(
                         closest_a,
                         closest_b,
                         map_region.read().unwrap().deref(),
                         &room_centers,
-                    );
-
-                    room_path
+                    )
                 },
             )
             .flatten()

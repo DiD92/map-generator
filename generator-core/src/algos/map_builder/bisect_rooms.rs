@@ -47,21 +47,21 @@ impl MapBuilder {
                 modifier: room.modifier,
             };
             let room_a_id = map_region.insert_room(room_a);
-            Self::recompute_neighours_for(room_id, map_region, room_a_id);
+            Self::recompute_neighbours_for(room_id, map_region, room_a_id);
 
             let room_b = Room {
                 cells: vec![room.cells[bisect_cell]],
                 modifier: room.modifier,
             };
             let room_b_id = map_region.insert_room(room_b);
-            Self::recompute_neighours_for(room_id, map_region, room_b_id);
+            Self::recompute_neighbours_for(room_id, map_region, room_b_id);
 
             let room_c = Room {
                 cells: room.cells[(bisect_cell + 1)..].to_vec(),
                 modifier: room.modifier,
             };
             let room_c_id = map_region.insert_room(room_c);
-            Self::recompute_neighours_for(room_id, map_region, room_c_id);
+            Self::recompute_neighbours_for(room_id, map_region, room_c_id);
 
             map_region.get_mut_neighbours(room_a_id).insert(room_b_id);
             map_region.get_mut_neighbours(room_b_id).insert(room_a_id);
@@ -74,7 +74,7 @@ impl MapBuilder {
         map_region.shrink_buffers();
     }
 
-    fn recompute_neighours_for(room_id: RoomId, map_region: &mut MapRegion, new_room_id: RoomId) {
+    fn recompute_neighbours_for(room_id: RoomId, map_region: &mut MapRegion, new_room_id: RoomId) {
         let mut new_neighbours = NeighbourSet::new();
 
         let neighbours = map_region.iter_neighbours(room_id).collect::<Vec<_>>();

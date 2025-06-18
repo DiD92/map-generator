@@ -32,8 +32,8 @@ impl RoomDecorator for MetroidRoomDecorator {
 
             let any_neighbour_is_vertical =
                 map_region.iter_active_neighbours(idx).any(|neighbour_id| {
-                    let neighour = map_region.get_active(neighbour_id);
-                    room.get_neighbouring_cells_for(neighour)
+                    let neighbour = map_region.get_active(neighbour_id);
+                    room.get_neighbouring_cells_for(neighbour)
                         .unwrap()
                         .iter()
                         .any(|(from, to, direction)| {

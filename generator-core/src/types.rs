@@ -1072,20 +1072,20 @@ impl Room {
             return None;
         }
 
-        let mut neighour_cells = Vec::new();
+        let mut neighbour_cells = Vec::new();
 
         for cell in self.cells.iter() {
             for other_cell in other.cells.iter() {
                 if let Some(direction) = cell.is_neighbour_of(other_cell) {
-                    neighour_cells.push((*cell, *other_cell, direction));
+                    neighbour_cells.push((*cell, *other_cell, direction));
                 }
             }
         }
 
-        if neighour_cells.is_empty() {
+        if neighbour_cells.is_empty() {
             None
         } else {
-            Some(neighour_cells)
+            Some(neighbour_cells)
         }
     }
 
@@ -1262,7 +1262,7 @@ mod test {
     }
 
     #[test]
-    fn test_rect_is_neighour_of() {
+    fn test_rect_is_neighbour_of() {
         let rect_1 = Rect {
             origin: Cell { col: 3, row: 1 },
             width: 2,

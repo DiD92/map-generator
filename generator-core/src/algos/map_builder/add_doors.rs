@@ -62,14 +62,14 @@ impl MapBuilder {
                         .filter(|(_, _, direction)| direction.is_horizontal())
                         .collect::<Vec<_>>();
 
-                    let neighouring_cells_selection = if priority_neighbouring_cells.is_empty() {
+                    let neighbouring_cells_selection = if priority_neighbouring_cells.is_empty() {
                         neighbouring_cells
                     } else {
                         priority_neighbouring_cells
                     };
 
-                    let selected_cell = rng.random_range(0..neighouring_cells_selection.len());
-                    let (from, to, _) = neighouring_cells_selection[selected_cell];
+                    let selected_cell = rng.random_range(0..neighbouring_cells_selection.len());
+                    let (from, to, _) = neighbouring_cells_selection[selected_cell];
 
                     let mut door = Door::new(from, to);
 

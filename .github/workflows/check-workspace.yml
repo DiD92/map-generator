@@ -10,26 +10,36 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.87
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.87.0
+          components: "rustfmt"
       - run: cargo fmt --all --check
 
   check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.87
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.87.0
       - run: cargo check --workspace
 
   clippy:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.87
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.87.0
+          components: "clippy"
       - run: cargo clippy --workspace -- -D warnings
 
   test:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.87
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.87.0
       - run: cargo test --workspace --all-targets

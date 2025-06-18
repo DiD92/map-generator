@@ -78,15 +78,11 @@ impl MapBuilder {
     ) {
         let mut merge_candidates = HashSet::new();
 
-        let mut non_merge_candidates = HashSet::new();
-
         for (i, room) in map_region.iter_active() {
             let room_cells = room.cells.len();
 
             if room_cells <= max_size {
                 merge_candidates.insert(i);
-            } else {
-                non_merge_candidates.insert(i);
             }
         }
 
@@ -102,8 +98,6 @@ impl MapBuilder {
 
             visited_rooms.insert(room_id);
 
-            let mut room_merged = false;
-
             for neighbour_id in map_region.iter_active_neighbours(room_id) {
                 if visited_rooms.contains(&neighbour_id) {
                     continue;
@@ -118,13 +112,13 @@ impl MapBuilder {
 
                 let room_cells_count = room.cells.len();
                 let room_neighbours_count = map_region.get_neighbours(room_id).len();
-                let neighour_cells_count = neighbour_room.cells.len();
-                let neighour_neighbours_count = map_region.get_neighbours(neighbour_id).len();
+                let neighbour_cells_count = neighbour_room.cells.len();
+                let neighbour_neighbours_count = map_region.get_neighbours(neighbour_id).len();
 
                 // If either rooms are the only neighbour of the other and that room has a area of 1
                 // we don't merge them
                 if (room_cells_count == 1 && room_neighbours_count == 1)
-                    || neighour_cells_count == 1 && neighour_neighbours_count == 1
+                    || neighbour_cells_count == 1 && neighbour_neighbours_count == 1
                 {
                     continue;
                 }
@@ -134,14 +128,8 @@ impl MapBuilder {
 
                     merge_pairs.insert(room_id, neighbour_id);
 
-                    room_merged = true;
-
                     break;
                 }
-            }
-
-            if !room_merged {
-                non_merge_candidates.insert(room_id);
             }
         }
 

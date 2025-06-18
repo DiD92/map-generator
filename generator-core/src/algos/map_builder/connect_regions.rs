@@ -79,7 +79,7 @@ impl MapBuilder {
             if from_room_map
                 .values()
                 .any(|room| match from_room.get_neighbouring_cells_for(room) {
-                    Some(ref neighours) => neighours
+                    Some(ref neighbours) => neighbours
                         .iter()
                         .any(|(_, _, direction)| direction == &from_axis),
                     None => false,
@@ -93,7 +93,7 @@ impl MapBuilder {
                 if to_room_map
                     .values()
                     .any(|room| match to_room.get_neighbouring_cells_for(room) {
-                        Some(ref neighours) => neighours
+                        Some(ref neighbours) => neighbours
                             .iter()
                             .any(|(_, _, direction)| direction == &to_axis),
                         None => false,

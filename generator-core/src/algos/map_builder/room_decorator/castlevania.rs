@@ -30,8 +30,8 @@ impl RoomDecorator for CastlevaniaRoomDectorator {
                 map_region
                     .iter_active_neighbours(room_idx)
                     .any(|neighbour_id| {
-                        let neighour = map_region.get_active(neighbour_id);
-                        room.get_neighbouring_cells_for(neighour)
+                        let neighbour = map_region.get_active(neighbour_id);
+                        room.get_neighbouring_cells_for(neighbour)
                             .unwrap()
                             .iter()
                             .any(|(from, to, direction)| {

@@ -19,12 +19,28 @@ struct Args {
 
     #[clap(short, long, default_value_t, value_enum)]
     style: MapStyle,
+
+    #[clap(short, long, default_value_t = false)]
+    /// If true, the map will not be saved to a file
+    dry_run: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let map_data = create_map(args.columns, args.rows, args.style);
+
+    if args.dry_run {
+        event!(
+            tracing::Level::INFO,
+            "Dry run mode enabled. Map data not saved."
+        );
+        return;
+    }
 
     let map_filename = {
         use std::time::SystemTime;

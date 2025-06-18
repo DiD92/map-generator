@@ -1,187 +1,25 @@
-use crate::{constants::REGION_SPLIT_FACTOR, types::*};
+use crate::{
+    MapStyle,
+    types::{Map, Rect},
+};
 
 use anyhow::Result;
 use rayon::prelude::*;
 use tracing::event;
 
 mod add_doors;
+mod bisect_rooms;
 mod bsp;
+mod builder_config;
 mod connect_regions;
 mod gen_rooms;
+mod merge_regions;
 mod merge_rooms;
 mod reconnect_rooms;
 mod room_decorator;
 
-pub(crate) struct MapBuilderConfig {
-    pub bsp_config: bsp::BinarySpacePartitioningConfig,
-    // Should we merge the regions after generating their rooms?
-    pub merge_regions: bool,
-    // The probability of randomly merging two rooms into one.
-    pub random_room_merge_prob: f64,
-    // Probability of having a group reconnect to two groups instead of one
-    pub group_loop_connection_chance: f64,
-    // Probability of opening a connection between rooms that will
-    // cause a navigation loop in the map.
-    pub loop_connection_chance: f64,
-    pub repeat_small_room_merge_prob: f64,
-    pub bisect_room_prob: f64,
-}
-
-impl Default for MapBuilderConfig {
-    fn default() -> Self {
-        MapBuilderConfig {
-            bsp_config: bsp::BinarySpacePartitioningConfig::default(),
-            merge_regions: true,
-            random_room_merge_prob: 0.05,
-            group_loop_connection_chance: 0.17,
-            loop_connection_chance: 0.2,
-            repeat_small_room_merge_prob: 0.2,
-            bisect_room_prob: 0.1,
-        }
-    }
-}
-
-impl MapBuilderConfig {
-    pub fn from_style(style: MapStyle) -> Self {
-        let mut base = Self::default();
-
-        match style {
-            MapStyle::CastlevaniaSOTN => {
-                base.bsp_config.horizontal_region_prob = 0.75;
-                base.bsp_config.big_rect_area_cutoff = 14;
-                base.bsp_config.big_rect_survival_prob = 0.09;
-                base.bsp_config.horizontal_split_prob = 0.85;
-                base.bsp_config.height_factor_cutoff = 2.9;
-                base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.33;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
-
-                base.random_room_merge_prob = 0.03;
-                base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
-                base.repeat_small_room_merge_prob = 0.51;
-                base.bisect_room_prob = 0.17;
-            }
-            MapStyle::CastlevaniaAOS => {
-                base.bsp_config.horizontal_region_prob = 0.0;
-                base.bsp_config.big_rect_area_cutoff = 11;
-                base.bsp_config.big_rect_survival_prob = 0.12;
-                base.bsp_config.horizontal_split_prob = 0.82;
-                base.bsp_config.height_factor_cutoff = 2.4;
-                base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.51;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.77;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.85;
-
-                base.random_room_merge_prob = 0.01;
-                base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.24;
-                base.repeat_small_room_merge_prob = 0.45;
-                base.bisect_room_prob = 0.15;
-            }
-            MapStyle::CastlevaniaCOTM => {
-                base.bsp_config.horizontal_region_prob = 0.1;
-                base.bsp_config.big_rect_area_cutoff = 12;
-                base.bsp_config.big_rect_survival_prob = 0.15;
-                base.bsp_config.horizontal_split_prob = 0.82;
-                base.bsp_config.height_factor_cutoff = 1.4;
-                base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.95;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.95;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.60;
-
-                base.random_room_merge_prob = 0.15;
-                base.group_loop_connection_chance = 0.10;
-                base.loop_connection_chance = 0.14;
-                base.repeat_small_room_merge_prob = 0.85;
-                base.bisect_room_prob = 0.29;
-            }
-            MapStyle::CastlevaniaHOD => {
-                base.bsp_config.horizontal_region_prob = 0.75;
-                base.bsp_config.big_rect_area_cutoff = 8;
-                base.bsp_config.big_rect_survival_prob = 0.09;
-                base.bsp_config.horizontal_split_prob = 0.85;
-                base.bsp_config.height_factor_cutoff = 1.9;
-                base.bsp_config.width_factor_cutoff = 1.6;
-                base.bsp_config.rect_survival_prob = 0.70;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
-
-                base.random_room_merge_prob = 0.03;
-                base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
-                base.repeat_small_room_merge_prob = 0.81;
-                base.bisect_room_prob = 0.17;
-            }
-            MapStyle::MetroidZM => {
-                base.bsp_config.region_split_factor =
-                    (REGION_SPLIT_FACTOR / 4) + (REGION_SPLIT_FACTOR / 2);
-                base.bsp_config.horizontal_region_prob = 0.75;
-                base.bsp_config.big_rect_area_cutoff = 14;
-                base.bsp_config.big_rect_survival_prob = 0.09;
-                base.bsp_config.horizontal_split_prob = 0.85;
-                base.bsp_config.height_factor_cutoff = 2.9;
-                base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.33;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.6;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.7;
-
-                base.merge_regions = false;
-
-                base.random_room_merge_prob = 0.03;
-                base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
-                base.repeat_small_room_merge_prob = 0.51;
-                base.bisect_room_prob = 0.17;
-            }
-            MapStyle::MetroidFS => {
-                base.bsp_config.region_split_factor =
-                    (REGION_SPLIT_FACTOR / 4) + (REGION_SPLIT_FACTOR / 2);
-                base.bsp_config.horizontal_region_prob = 0.75;
-                base.bsp_config.big_rect_area_cutoff = 14;
-                base.bsp_config.big_rect_survival_prob = 0.09;
-                base.bsp_config.horizontal_split_prob = 0.85;
-                base.bsp_config.height_factor_cutoff = 2.9;
-                base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.33;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
-
-                base.merge_regions = false;
-
-                base.random_room_merge_prob = 0.03;
-                base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
-                base.repeat_small_room_merge_prob = 0.51;
-                base.bisect_room_prob = 0.17;
-            }
-            MapStyle::MetroidSP => {
-                base.bsp_config.region_split_factor =
-                    (REGION_SPLIT_FACTOR / 4) + (REGION_SPLIT_FACTOR / 2);
-                base.bsp_config.horizontal_region_prob = 0.75;
-                base.bsp_config.big_rect_area_cutoff = 14;
-                base.bsp_config.big_rect_survival_prob = 0.09;
-                base.bsp_config.horizontal_split_prob = 0.85;
-                base.bsp_config.height_factor_cutoff = 2.9;
-                base.bsp_config.width_factor_cutoff = 2.6;
-                base.bsp_config.rect_survival_prob = 0.33;
-                base.bsp_config.trim_highly_connected_rect_prob = 0.8;
-                base.bsp_config.trim_fully_connected_rect_prob = 0.9;
-
-                base.merge_regions = false;
-
-                base.random_room_merge_prob = 0.03;
-                base.group_loop_connection_chance = 0.19;
-                base.loop_connection_chance = 0.22;
-                base.repeat_small_room_merge_prob = 0.51;
-                base.bisect_room_prob = 0.17;
-            }
-        }
-
-        base
-    }
-}
+use builder_config::BinarySpacePartitioningConfig;
+pub(crate) use builder_config::MapBuilderConfig;
 
 pub(crate) struct MapBuilder {
     pub cols: u32,
@@ -200,89 +38,93 @@ impl MapBuilder {
     }
 
     pub fn build(&self, config: &MapBuilderConfig, style: MapStyle) -> Vec<Map> {
-        let build_start = std::time::SystemTime::now();
+        let build_start = std::time::Instant::now();
 
-        let rect_regions = bsp::BinarySpacePartitioning::generate_and_trim_partitions(
+        let rect_groups = bsp::BinarySpacePartitioning::generate_and_trim_partitions(
             self.cols,
             self.rows,
             config.bsp_config,
         );
 
-        let map_regions = rect_regions
+        let rect_groups_time = std::time::Instant::now();
+        event!(
+            tracing::Level::DEBUG,
+            "Generated rectangle groups in {:.2}ms",
+            rect_groups_time.duration_since(build_start).as_millis()
+        );
+
+        let map_regions = rect_groups
             .into_par_iter()
-            .map(|(origin_rect, region_rects)| {
-                let mut map_region = Self::generate_map_region(origin_rect, region_rects);
+            .by_uniform_blocks(30)
+            .map(|(origin_rect, region_rects, removed_rects, neighbours)| {
+                let mut map_region =
+                    Self::generate_map_region(origin_rect, region_rects, removed_rects, neighbours);
+
+                map_region.compact_buffers();
 
                 Self::merge_random_rooms(&mut map_region, config);
 
                 Self::reconnect_room_groups(&mut map_region, config);
 
+                // We randomly merge some groups of 1 sized-rooms first
+                Self::merge_repeated_simple_rooms(
+                    &mut map_region,
+                    1,
+                    config.repeat_small_room_merge_prob,
+                );
+                // Then we merge rooms of size 2 or less
+                Self::merge_repeated_simple_rooms(
+                    &mut map_region,
+                    2,
+                    config.repeat_small_room_merge_prob / 2.0,
+                );
+
+                // Finally we bisect long horizontal rooms randomly
+                Self::bisect_long_horizontal_rooms(&mut map_region, config.bisect_room_prob);
+
                 map_region
-            });
+            })
+            .collect::<Vec<_>>();
+
+        let map_regions_time = std::time::Instant::now();
+        event!(
+            tracing::Level::DEBUG,
+            "Generated map regions in {:.2}ms",
+            map_regions_time
+                .duration_since(rect_groups_time)
+                .as_millis()
+        );
 
         let generated_maps = if config.merge_regions {
-            let region_rooms = map_regions
-                .map(|mut region| {
-                    region
-                        .rooms
-                        .drain()
-                        .map(|(_, room)| room)
-                        .collect::<Vec<_>>()
-                })
-                .flatten()
-                .collect::<Vec<_>>();
+            let origin_rect = Rect::new(0, 0, self.cols, self.rows);
 
-            let room_table = Self::generate_room_table(region_rooms);
+            let mut map_region = Self::merge_regions(origin_rect, map_regions);
 
-            let neighbour_map = Self::generate_neighbour_table(&room_table);
-
-            let mut map_region = MapRegion {
-                origin_rect: Rect {
-                    origin: Cell::new(0, 0),
-                    width: self.cols,
-                    height: self.rows,
-                },
-                rooms: room_table,
-                neighbours: neighbour_map,
-            };
-
+            // We connect the rooms of the newly merged region together
             Self::reconnect_room_groups(&mut map_region, config);
 
-            let doors = Self::add_doors_to_rooms(&map_region, config);
+            let doors: Vec<crate::types::Door> = Self::generate_doors_for(&map_region, config);
 
-            let room_decorator = room_decorator::RoomDecoratorFactory::decorator_for(style);
-            room_decorator::RoomDecorator::decorate(
-                room_decorator.as_ref(),
+            room_decorator::RoomDecoratorFactory::decorator_for(style).decorate(
                 &mut map_region,
                 &doors,
                 config,
             );
 
-            let rooms = map_region.rooms.into_values().collect();
-
-            vec![Map {
-                origin_rect: map_region.origin_rect,
-                rooms,
-                doors,
-            }]
+            vec![map_region.into_map(doors)]
         } else {
             let mut maps = map_regions
+                .into_iter()
                 .map(|mut map_region| {
-                    let doors = Self::add_doors_to_rooms(&map_region, config);
+                    let doors = Self::generate_doors_for(&map_region, config);
 
-                    let room_decorator = room_decorator::RoomDecoratorFactory::decorator_for(style);
-                    room_decorator::RoomDecorator::decorate(
-                        room_decorator.as_ref(),
+                    room_decorator::RoomDecoratorFactory::decorator_for(style).decorate(
                         &mut map_region,
                         &doors,
                         config,
                     );
 
-                    Map {
-                        origin_rect: map_region.origin_rect,
-                        rooms: map_region.rooms.into_values().collect(),
-                        doors,
-                    }
+                    map_region.into_map(doors)
                 })
                 .collect::<Vec<_>>();
 
@@ -291,6 +133,15 @@ impl MapBuilder {
             maps
         };
 
+        let generated_maps_time = std::time::Instant::now();
+        event!(
+            tracing::Level::DEBUG,
+            "Added doors and modifiers in {:.2}ms",
+            generated_maps_time
+                .duration_since(map_regions_time)
+                .as_millis()
+        );
+
         let built_rooms = generated_maps
             .iter()
             .fold(0_usize, |acc, map| acc + map.rooms.len());
@@ -298,14 +149,13 @@ impl MapBuilder {
         let built_doors = generated_maps
             .iter()
             .fold(0_usize, |acc, map| acc + map.doors.len());
-
-        let build_end = std::time::SystemTime::now();
         event!(
             tracing::Level::DEBUG,
-            "Built map with {} rooms and {} doors in {:?}ms",
+            "Built {} map/s with {} rooms and {} doors in {:.2}ms total",
+            generated_maps.len(),
             built_rooms,
             built_doors,
-            build_end.duration_since(build_start).unwrap().as_millis()
+            generated_maps_time.duration_since(build_start).as_millis()
         );
 
         generated_maps

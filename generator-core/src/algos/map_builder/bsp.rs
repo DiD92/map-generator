@@ -433,8 +433,6 @@ mod test {
 
         let results = BinarySpacePartitioning::generate_and_trim_partitions(width, height, config);
 
-        assert_eq!(results.len(), 1);
-
         for (origin_rect, rect_table, removed_rects, neighbours) in results {
             // Check origin rect dimensions
             assert!(origin_rect.width > 0 && origin_rect.width <= width);

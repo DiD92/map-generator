@@ -47,13 +47,6 @@ impl MapBuilder {
                     .copied()
                     .expect("Should have a neighbour to merge with!");
 
-                if room_id == selected_neighbour {
-                    println!(
-                        "Warning: Room ID {} is merging with itself, skipping.",
-                        room_id
-                    );
-                }
-
                 rooms_to_merge.insert(room_id);
                 rooms_to_merge.insert(selected_neighbour);
 

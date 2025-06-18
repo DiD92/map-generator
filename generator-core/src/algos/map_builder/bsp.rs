@@ -89,11 +89,6 @@ impl BinarySpacePartitioning {
         let mut rect_queue = VecDeque::new();
         rect_queue.push_back(initial_rect);
 
-        println!(
-            "Minimum area for region splitting: {}",
-            config.region_split_factor
-        );
-
         let mut built_rects =
             Vec::with_capacity(initial_rect.area() as usize / config.region_split_factor as usize);
 

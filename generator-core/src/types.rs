@@ -1490,8 +1490,6 @@ mod test {
         ];
         assert_eq!(map_region_1.neighbour_buffer, expected_neighbour_buffer);
 
-        println!("{:?}", map_region_1.iter_active().collect::<Vec<_>>());
-
         map_region_1.compact_buffers();
 
         // Check the state of the buffers after compaction

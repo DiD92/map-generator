@@ -6,10 +6,11 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 aws-config = { workspace = true, features = ["behavior-version-latest"] }
-aws_lambda_events = { workspace = true, features = ["eventbridge"] }
 aws-sdk-s3 = { workspace = true }
 lambda_runtime = { workspace = true, features = ["tracing", "anyhow"] }
+rand = { workspace = true, features = ["std"] }
 
+serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["macros"] }
 uuid = { workspace = true, features = ["v4", "fast-rng"] }
 

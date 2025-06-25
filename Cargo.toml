@@ -16,7 +16,6 @@ members = [
 anyhow = { version = "1.0", default-features = false }
 axum = { version = "0.8", default-features = false }
 aws-config = { version = "1.8.0" }
-aws_lambda_events = { version = "0.15.1" }
 aws-sdk-s3 = { version = "1.93.0" }
 clap = { version = "4.0", default-features = false }
 derive_more = { version = "2.0", default-features = false }

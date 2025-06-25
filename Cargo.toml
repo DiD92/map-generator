@@ -9,13 +9,17 @@ members = [
     "generator-cli",
     "generator-server",
     "generator-ui",
+    "generator-lambda",
 ]
 
 [workspace.dependencies]
-axum = { version = "0.8", default-features = false }
 anyhow = { version = "1.0", default-features = false }
+axum = { version = "0.8", default-features = false }
+aws-config = { version = "1.8.0" }
+aws-sdk-s3 = { version = "1.93.0" }
 clap = { version = "4.0", default-features = false }
 derive_more = { version = "2.0", default-features = false }
+lambda_runtime = { version = "0.13", default-features = false }
 priority-queue = { version = "2.0", default-features = false }
 rand = { version = "0.9", default-features = false }
 rayon = { version = "1.10", default-features = false }

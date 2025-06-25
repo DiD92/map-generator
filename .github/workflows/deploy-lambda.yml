@@ -3,7 +3,7 @@ name: Deploy Lambda
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'generator-lambda/**'
 
